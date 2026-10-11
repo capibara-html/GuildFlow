@@ -315,6 +315,17 @@ async function finalize($: $) {
   if (o.ok) await note($, 'quest.summary', { path: `.guildflow/summary-${q.id}.md` })
 }
 
+/**
+ * Envía un turno al Maestro ($.prompt.submit: corre cuando la sesión queda libre). Se registra el resultado,
+ * porque un anfitrión puede no ejecutarlo o descartarlo; quien lo usa avisa a la persona de cómo seguir a mano.
+ */
+function kick($: $, why: string, input: { text: string }) {
+  $.prompt
+    .submit(input)
+    .then(r => note($, 'prompt.kick', { why, result: 'drop' in r ? { drop: String(r.drop) } : 'entered' }))
+    .catch(err => note($, 'prompt.kick', { why, error: String(err).slice(0, 300) }))
+}
+
 /** Continuación acotada: solo en una misión aprobada, solo si hubo progreso desde la última y nunca más que las iteraciones permitidas. */
 async function maybeContinue($: $) {
   const q = QUEST
@@ -329,7 +340,7 @@ async function maybeContinue($: $) {
     return { ok: true, quest: c, log: [{ ev: 'continuation', data: { n: c.continuations, state: c.state } }] }
   })
   if (!o.ok) return
-  void $.prompt.submit({
+  kick($, 'continuation', {
     text: `${PREFIX} (continuación automática ${o.quest.continuations}): la misión ${q.id} sigue en ${q.state} y es aprobada. Siguiente paso permitido: ${M.nextStep(q)}. Consulta mcp__guildflow__quest {"action":"status"} si necesitas el detalle. Si necesitas una decisión humana, detente y pregunta.`,
   })
 }
@@ -446,14 +457,14 @@ async function cmdQuest($: $, args: string): Promise<string> {
     return commit($, fresh)
   })
   if (!created.ok) return `No se pudo crear la misión: ${created.error}`
-  void $.prompt.submit({
+  kick($, 'quest', {
     text:
       `${PREFIX}: misión ${created.quest.id} creada. Petición original: "${request}". ` +
       'Sigue la skill guildflow (protocolo de misión): analiza objetivo, alcance, restricciones, riesgos y archivos afectados; si falta información esencial para definir criterios verificables, pregúntala; ' +
       'planifica tú mismo si es sencilla o invoca a guildflow:archimago si es compleja; después envía el plan con mcp__guildflow__quest {"action":"submit_plan","plan":{...}}. La aprobación la gestiona el mod.',
   })
   await $.ui.open({ id: PANE, title: 'Gremio · GuildFlow' }).catch(() => undefined)
-  return `Misión ${created.quest.id} creada (${created.quest.state}). El Maestro preparará el plan; ${OPTIONS.autoApprovePlan === true ? 'si no toca nada sensible se aprobará automáticamente, si no se pedirá en un diálogo' : 'la aprobación se pedirá en un diálogo'}.`
+  return `Misión ${created.quest.id} creada (${created.quest.state}). El Maestro preparará el plan; ${OPTIONS.autoApprovePlan === true ? 'si no toca nada sensible se aprobará automáticamente, si no se pedirá en un diálogo' : 'la aprobación se pedirá en un diálogo'}. Si el Maestro no empieza solo en unos segundos, escribe "empieza".`
 }
 
 async function cmdHalt($: $): Promise<string> {
@@ -493,7 +504,7 @@ async function cmdResume($: $): Promise<string> {
   if (answer !== 'Reanudar') return 'Reanudación cancelada.'
   const o = await mutate($, (x, now) => M.resume({ ...x, limits: fresh }, { by: 'human', breach }, now))
   if (!o.ok) return `No se pudo reanudar: ${o.error}`
-  void $.prompt.submit({ text: `${PREFIX}: la persona reanudó la misión ${q.id} (${o.quest.state}). Siguiente paso permitido: ${M.nextStep(o.quest)}.` })
+  kick($, 'resume', { text: `${PREFIX}: la persona reanudó la misión ${q.id} (${o.quest.state}). Siguiente paso permitido: ${M.nextStep(o.quest)}.` })
   return `Misión ${q.id} reanudada en ${o.quest.state}. Siguiente: ${M.nextStep(o.quest)}`
 }
 
