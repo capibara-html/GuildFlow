@@ -1,0 +1,6 @@
+{
+  "name": "guildflow-poc",
+  "version": "0.1.0",
+  "description": "GuildFlow Fase 1: PoC desechable de imposición por rol, veto por rutas, uso, persistencia y panel SVG",
+  "types": "./types/index.d.ts"
+}

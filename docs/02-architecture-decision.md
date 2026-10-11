@@ -31,7 +31,7 @@
 | Puertas / vetos | `tool.call` → `{ deny }`; `classic.Stop` → `block`; `agent.spawn` reescribe o rechaza; `.catch` para fallar en cerrado | reference.md |
 | Persistencia | `$.state` (sesión, la guarda el host y sobrevive a recargas del mod), `$.store` (entre sesiones), `$.fs` (archivos), `${CLAUDE_PLUGIN_DATA}` | reference.md, plugins-reference |
 | Segundo plano | Timers `$.clock.every/after` iniciados en `session.start`; `$.prompt.submit` despierta una sesión inactiva; subagentes en background; *workflows* | reference.md §Work that outlives a dispatch |
-| Coste | `turn.complete.usage` da **tokens**, no dólares. No hay un tope de gasto nativo | `TurnUsage` |
+| Coste | `turn.complete.usage` da **tokens** por bucle. **Corrección tras la PoC (2026-10-11):** `$.session.usage().cost.usd` da el total en USD de la sesión y `turn.step` el `usage` de cada petición, y ambos concilian al céntimo (ver `06-poc-results.md` P5). No hay tope de gasto nativo, pero el mod puede imponer uno | `TurnUsage`, `SessionUsage` |
 | Herramienta propia para el modelo | `$.tool.register` → `mcp__<plugin>__<name>` (por defecto detrás de ToolSearch; `isDeferred: false` la deja visible) | reference.md |
 | Estabilidad de la API | **"EARLY ACCESS: this surface may change between releases without notice."** | Cabecera de tipos |
 
