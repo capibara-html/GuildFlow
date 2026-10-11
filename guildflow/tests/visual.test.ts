@@ -144,14 +144,29 @@ describe('integración: lanzamiento de una subtarea visual creativa', () => {
     expect(configs[1]).toEqual({ name: 'guildflow-preview', runtimeExecutable: 'python', runtimeArgs: ['-m', 'http.server', '8000', '--bind', '127.0.0.1'], port: 8000 })
     const r = await $.agent.spawn({ prompt: 'diseña', subagentType: 'guildflow:artifice' } as never)
     expect(r.agentId).toBeDefined()
+    // Mismo turno que el registro: el motor aún no lanza la variante → Artífice base (que ya declara navegador), con Opus
     const s = w.spawned[0] as { model: string; prompt: string; subagentType: string }
-    expect(s.subagentType).toBe('guildflow:artifice-t1') // variante registrada: navegador y modelo de la subtarea
+    expect(s.subagentType).toBe('guildflow:artifice')
     expect(s.model).toBe('claude-opus-5-5')
     expect(s.prompt).toContain('Para VER el resultado')
-    const reg = w.registered[0]
+    const reg = w.registered.find(x => x.name === 'artifice-t1')!
     expect(reg.model).toBe('claude-opus-5-5')
     expect(reg.tools).toContain('mcp__Claude_Browser__computer')
     expect(reg.tools).not.toContain('mcp__Claude_Browser__javascript_tool')
+  })
+
+  test('al aprobar se registran las variantes; desde el turno siguiente se lanzan (Artífice y Paladín)', { options: { autoApprovePlan: true } }, async ($, on) => {
+    const w = world(on, { quest: { ...approved(visualRaw()), state: 'PLANNING', plan: null, planHash: null, approval: null, rev: 1 } })
+    on('turn.start', ($, e) => ({ turnId: e.turnId }))
+    const r = await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: visualRaw() } as never)
+    expect(String((r as { result?: unknown }).result)).toContain('automáticamente')
+    expect(w.registered.map(x => x.name).sort()).toEqual(['artifice-t1', 'paladin-t1'])
+    await $.turn.start({ turnId: 'siguiente', text: '' } as never)
+    await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' } as never)
+    await $.agent.spawn({ prompt: 'diseña', subagentType: 'guildflow:artifice' } as never)
+    const s = w.spawned[0] as { model: string; subagentType: string }
+    expect(s.subagentType).toBe('guildflow:artifice-t1')
+    expect(s.model).toBe('claude-opus-5-5')
   })
 
   test('si el registro de la variante falla, se lanza el Artífice base (la guarda sigue aplicando lo aprobado)', async ($, on) => {

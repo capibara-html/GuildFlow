@@ -26,6 +26,9 @@ let QUEST_ROOT: string | null = null
 let loaded = false
 let OPTIONS: Readonly<Record<string, unknown>> = {}
 let mainTurn: string | null = null
+/** Turnos de la sesión principal: un tipo registrado con $.agent.register solo se puede lanzar desde el turno siguiente. */
+let mainTurnSeq = 0
+const variantReady = new Map<string, number>()
 
 const PREFIX = 'GuildFlow'
 const VERDICTS = ['PASS', 'FAIL', 'INCONCLUSIVE', 'NOT_RUN'] as const
@@ -270,6 +273,7 @@ async function askApproval($: $): Promise<string> {
     const baseline = await baselineFor($, q)
     const o = await mutate($, (x, t) => M.approve(x, { by: 'auto', answer: 'autoApprovePlan', baseline }, t))
     if (o.ok) $.ui.toast(`${PREFIX}: plan de ${q.id} aprobado automáticamente (autoApprovePlan)`)
+    if (o.ok) await prepareVariants($, o.quest)
     return o.ok ? `Plan APROBADO automáticamente (autoApprovePlan; sin rutas sensibles). Siguiente: ${M.nextStep(o.quest)}` : `No se pudo registrar la aprobación: ${o.error}`
   }
   if (OPTIONS.autoApprovePlan === true) await note($, 'approval.needs_human', { reasons: sensitive })
@@ -288,6 +292,7 @@ async function askApproval($: $): Promise<string> {
   }
   const baseline = await baselineFor($, q)
   const o = await mutate($, (x, t) => M.approve(x, { by: 'human', answer, baseline }, t))
+  if (o.ok) await prepareVariants($, o.quest)
   return o.ok ? `Plan APROBADO por la persona. Siguiente: ${M.nextStep(o.quest)}` : `No se pudo registrar la aprobación: ${o.error}`
 }
 
@@ -504,21 +509,38 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
   const special = task.visual || (role === 'artifice' && (task.resources.tools.length > 0 || task.resources.skills.length > 0 || task.model !== 'sonnet'))
   if (!special) return ROLES[role].type
   const name = roleVariant(role, task.id)
-  try {
-    await $.agent.register({
-      name,
-      description: `GuildFlow · ${role === 'artifice' ? 'Artífice' : 'Paladín'} de ${task.id}${task.visual ? ' (con navegador local)' : ''}. Solo lo lanza el Maestro tras quest ${role === 'artifice' ? 'start_task' : 'start_review'}.`,
-      prompt: role === 'artifice' ? ARTIFICE_SYSTEM : PALADIN_SYSTEM,
-      tools: [...toolsFor(q, role)],
-      skills: role === 'artifice' ? task.resources.skills : [],
-      model: modelFor(q, role, task.id),
-      effort: ROLES[role].effort,
-      maxTurns: q.limits.maxTurns[role] + (task.visual ? 20 : 0),
-    })
-    return `${PLUGIN}:${name}`
-  } catch (err) {
-    await note($, 'agent.variant.failed', { role, taskId: task.id, error: String(err).slice(0, 300) })
-    return ROLES[role].type
+  // Registrada en un turno anterior: ya se puede lanzar (herramientas exactas y skills precargadas)
+  const at = variantReady.get(name)
+  if (at !== undefined && at < mainTurnSeq) return `${PLUGIN}:${name}`
+  if (at === undefined) {
+    try {
+      await $.agent.register({
+        name,
+        description: `GuildFlow · ${role === 'artifice' ? 'Artífice' : 'Paladín'} de ${task.id}${task.visual ? ' (con navegador local)' : ''}. Solo lo lanza el mod.`,
+        prompt: role === 'artifice' ? ARTIFICE_SYSTEM : PALADIN_SYSTEM,
+        tools: [...toolsFor(q, role)],
+        skills: role === 'artifice' ? task.resources.skills : [],
+        model: modelFor(q, role, task.id),
+        effort: ROLES[role].effort,
+        maxTurns: q.limits.maxTurns[role] + (task.visual ? 20 : 0),
+      })
+      variantReady.set(name, mainTurnSeq)
+    } catch (err) {
+      await note($, 'agent.variant.failed', { role, taskId: task.id, error: String(err).slice(0, 300) })
+    }
+  }
+  // Aún no lanzable en este turno: el agente base ya declara navegador, web y skills, y la guarda limita a lo aprobado
+  return ROLES[role].type
+}
+
+/** Registra de antemano las variantes del plan aprobado para que estén listas desde el turno siguiente. */
+async function prepareVariants($: $, q: Quest) {
+  for (const t of q.plan?.tasks ?? []) {
+    const special = t.visual || t.resources.tools.length > 0 || t.resources.skills.length > 0 || t.model !== 'sonnet'
+    if (!special) continue
+    const fake = { ...q, activeTask: t.id }
+    await roleTypeFor($, fake, 'artifice')
+    if (t.visual) await roleTypeFor($, fake, 'paladin')
   }
 }
 
@@ -838,8 +860,12 @@ export const register: Register = (on, options) => {
 
   on('turn.start', ($, e, next) => {
     mainTurn = e.turnId
+    if (!(e as { agentId?: string }).agentId) mainTurnSeq += 1
     return next(e)
   })
+
+  // Las variantes por subtarea las lanza el mod a través del Maestro; no se ofrecen al modelo como tipos propios
+  on('agent.offer', ($, e, next) => (/^guildflow:(artifice|paladin)-/.test(e.agent) ? { isOffered: false } : next(e)))
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
