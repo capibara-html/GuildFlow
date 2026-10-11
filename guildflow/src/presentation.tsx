@@ -1,6 +1,6 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
 // Separada del dominio: el futuro tablón pixel art sustituye esta capa sin tocar machine.ts.
-import type { AgentRecord, Quest, Role } from '../types'
+import type { AgentRecord, Limits, Plan, Quest, Role } from '../types'
 import { elapsedMs, nextStep, progressSummary } from './machine'
 
 type Station = Role | 'maestro' | 'escriba'
@@ -112,7 +112,7 @@ export function summaryMarkdown(q: Quest, runs: string[], now: number): string {
   }
   out.push('', '## Archivos modificados', ...(q.filesWritten.length ? q.filesWritten.map(f => `- ${f.slice(q.project.length + 1)}`) : ['- (ninguno registrado)']))
   out.push('', '## Verificaciones', ...(runs.length ? runs.map(r => `- ${r}`) : ['- (ninguna)']))
-  out.push('', '## Pendiente y siguiente paso', `- ${nextStep(q)}`)
+  out.push('', '## Pendiente y siguiente paso', `- ${q.state === 'DONE' || q.state === 'LOGGED' ? 'Nada pendiente: misión completada' : nextStep(q)}`)
   return `${out.join('\n')}\n`
 }
 
@@ -164,4 +164,20 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean) {
       <Text>{statusText(q, now)}</Text>
     </Box>
   )
+}
+
+/** Tope del texto del diálogo de aprobación: un plan que no cabe completo no se aprueba en un diálogo. */
+export const APPROVAL_MAX = 3000
+
+/**
+ * Texto del diálogo de aprobación: TODAS las rutas y TODOS los argv completos, sin recortes. null si no cabe
+ * (el plan se rechaza y hay que dividirlo): nunca se aprueba algo que la persona no pudo leer entero.
+ */
+export function approvalText(id: string, plan: Plan, limits: Limits): string | null {
+  const tasks = plan.tasks.map(t => `${t.id} escribe en [${t.paths.join(', ')}]`).join('; ')
+  const checks = plan.checks.map(k => `${k.id} = ${JSON.stringify(k.argv)} en ${k.cwd} (protege ${k.protects.join(', ') || '—'})`).join('; ') || 'ninguna'
+  const text =
+    `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks} — ` +
+    `Límites: ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min. ¿Apruebas el plan?`
+  return text.length > APPROVAL_MAX ? null : text
 }

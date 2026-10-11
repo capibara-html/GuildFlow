@@ -1,9 +1,13 @@
 // Verificación ejecutada por el mod: run_check (id → argv congelado, sin shell) y diff-scope.
 // El modelo solo aporta un identificador; nunca una cadena de comando ni argumentos.
 import type { CheckDef, Io, Quest } from '../types'
+import { diskMatches } from './persistence'
 import { exeName, hash, inside, matchesEntry, normalizeAbs, parseEntry, type PathEntry } from './validation'
 
 export const OUTPUT_LIMIT = 16_000
+
+/** git del mod: sin fsmonitor (que ejecuta un programa configurado por el repositorio) ni paginador. */
+export const gitArgv = (args: string[]) => ['git', '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', ...args]
 
 /** Número de tests ejecutados según los formatos habituales; null si la salida no lo dice. */
 export function countTests(out: string): number | null {
@@ -124,14 +128,24 @@ export async function execute(io: Io, q: Quest, def: CheckDef): Promise<Executio
   const now = await fingerprint(io, root, def.protects)
   const changed = def.protects.filter(p => expected[p] !== undefined && expected[p] !== now[p])
   if (changed.length) return done({ ...base, error: null, integrity: `definición de la comprobación modificada tras la aprobación: ${changed.join(', ')}`, exitCode: -1, stderr: `integridad: ${changed.join(', ')}` })
+  // El código bajo prueba corre con los permisos del usuario (los mods no tienen sandbox de procesos):
+  // se comprueba DESPUÉS de cada ejecución que no tocó las rutas protegidas ni el estado del gremio.
+  const after = async (x: Omit<Execution, 'judged'>): Promise<Execution> => {
+    const post = await fingerprint(io, root, def.protects)
+    const touched = def.protects.filter(p => post[p] !== now[p])
+    // quest.json se compara con lo último que escribió el propio mod (no antes/después: el mod escribe durante la ejecución)
+    const questOk = await diskMatches(io, root)
+    const problems = [...(touched.length ? [`la ejecución modificó rutas protegidas: ${touched.join(', ')}`] : []), ...(questOk === false ? ['quest.json no coincide con lo último que escribió el mod'] : [])]
+    return done(problems.length ? { ...x, integrity: problems.join('; ') } : x)
+  }
   const t0 = await io.now()
   try {
     const r = await io.run(def.argv, { cwd, timeoutMs: def.timeoutMs })
-    return done({ ...base, cwd, exitCode: r.exitCode, stdout: r.stdout.slice(0, OUTPUT_LIMIT), stderr: r.stderr.slice(0, OUTPUT_LIMIT), durationMs: (await io.now()) - t0 })
+    return after({ ...base, cwd, exitCode: r.exitCode, stdout: r.stdout.slice(0, OUTPUT_LIMIT), stderr: r.stderr.slice(0, OUTPUT_LIMIT), durationMs: (await io.now()) - t0 })
   } catch (err) {
     const durationMs = (await io.now()) - t0
     const timedOut = durationMs >= def.timeoutMs - 100
-    return done({ ...base, cwd, error: timedOut ? null : String(err).slice(0, 300), timedOut, durationMs })
+    return after({ ...base, cwd, error: timedOut ? null : String(err).slice(0, 300), timedOut, durationMs })
   }
 }
 
@@ -164,9 +178,12 @@ export async function diffScope(io: Io, q: Quest): Promise<Scope> {
   const changed = new Set<string>(q.filesWritten)
   const untracked = new Set<string>()
   let gitNote = ''
+  let headMoved = false
   const gitRoot = q.baseline?.gitRoot ?? null
   if (gitRoot) {
-    const st = await io.run(['git', 'status', '--porcelain=v1', '-z', '-uall'], { cwd: gitRoot, timeoutMs: 30_000 }).catch(() => null)
+    const head = await io.run(gitArgv(['rev-parse', 'HEAD']), { cwd: gitRoot, timeoutMs: 30_000 }).catch(() => null)
+    headMoved = !!q.baseline?.head && (!head || head.exitCode !== 0 || head.stdout.trim() !== q.baseline.head)
+    const st = await io.run(gitArgv(['status', '--porcelain=v1', '-z', '-uall']), { cwd: gitRoot, timeoutMs: 30_000 }).catch(() => null)
     if (!st || st.exitCode !== 0) gitNote = ' (git status no disponible: solo escrituras registradas)'
     else {
       const dirty = new Set(q.baseline!.dirty)
@@ -188,7 +205,7 @@ export async function diffScope(io: Io, q: Quest): Promise<Scope> {
     const rels = list.filter(a => !untracked.has(a)).map(a => a.slice(gitRoot.length + 1))
     let lines = 0
     if (rels.length) {
-      const ns = await io.run(['git', 'diff', '--numstat', q.baseline.head, '--', ...rels], { cwd: gitRoot, timeoutMs: 30_000 }).catch(() => null)
+      const ns = await io.run(gitArgv(['diff', '--no-ext-diff', '--no-textconv', '--numstat', q.baseline.head, '--', ...rels]), { cwd: gitRoot, timeoutMs: 30_000 }).catch(() => null)
       if (ns && ns.exitCode === 0) for (const l of ns.stdout.split('\n')) {
         const [a, d] = l.split('\t')
         lines += (Number(a) || 0) + (Number(d) || 0)
@@ -198,6 +215,7 @@ export async function diffScope(io: Io, q: Quest): Promise<Scope> {
     diffLines = lines
   }
   const problems: string[] = []
+  if (headMoved) problems.push('HEAD cambió desde la aprobación (commits o reset durante la misión)')
   if (outOfScope.length) problems.push(`fuera de alcance: ${outOfScope.join(', ')}`)
   if (!touched.length) problems.push(`la subtarea ${task.id} no modificó ninguna de sus rutas`)
   if (list.length > q.limits.maxFilesChanged) problems.push(`${list.length} archivos (> ${q.limits.maxFilesChanged})`)

@@ -29,6 +29,8 @@ const TERMINAL: readonly QuestState[] = ['DONE', 'LOGGED']
 /** La misión sigue bajo el control de GuildFlow (las políticas del mod se aplican). */
 export const isActive = (q: Quest | null): q is Quest => q !== null && q.state !== 'LOGGED'
 export const isStopped = (q: Quest) => STOPPED.includes(q.state)
+/** La misión está trabajando: solo entonces se vigila al Maestro (detenida, terminada o esperando aprobación, no). */
+export const isWorking = (q: Quest | null): q is Quest => isActive(q) && !isStopped(q) && q.state !== 'DONE' && q.state !== 'AWAITING_APPROVAL'
 /** La aprobación humana del plan vigente existe y coincide con su hash. */
 export const isApproved = (q: Quest) =>
   q.approval !== null && q.plan !== null && q.planHash !== null && q.approval.planHash === q.planHash && hash(JSON.stringify(q.plan)) === q.planHash
@@ -155,14 +157,15 @@ export function rejectPlan(q: Quest, feedback: string, now: number): Outcome {
 }
 
 /** Solo una respuesta humana aprueba; el hash del plan aprobado queda congelado. */
+/** `auto` solo lo usa el mod con autoApprovePlan activado por la persona y un plan sin nada sensible. */
 export function approve(q: Quest, a: { by: string; answer: string; baseline: Quest['baseline'] }, now: number): Outcome {
   return op(q, now, (c, log) => {
     if (c.state !== 'AWAITING_APPROVAL') throw new Error(`no hay plan pendiente de aprobación (${c.state})`)
-    if (a.by !== 'human') throw new Error('solo la persona usuaria puede aprobar')
+    if (a.by !== 'human' && a.by !== 'auto') throw new Error('solo la persona usuaria (o su aprobación automática) puede aprobar')
     if (!c.plan || !c.planHash || hash(JSON.stringify(c.plan)) !== c.planHash) throw new Error('el plan no coincide con su hash')
-    c.approval = { by: 'human', at: now, planHash: c.planHash, answer: a.answer }
+    c.approval = { by: a.by, at: now, planHash: c.planHash, answer: a.answer }
     c.baseline = a.baseline
-    log.push({ ev: 'plan.approved', data: { planHash: c.planHash, answer: a.answer } })
+    log.push({ ev: 'plan.approved', data: { by: a.by, planHash: c.planHash, answer: a.answer } })
     go(c, 'DISPATCH', now, log)
   })
 }

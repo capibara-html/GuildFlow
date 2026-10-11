@@ -27,6 +27,21 @@ function serial<T>(fn: () => Promise<T>): Promise<T> {
   return p
 }
 
+/** Hash del último quest.json que este módulo escribió o leyó, por proyecto. */
+const lastText = new Map<string, string>()
+
+/**
+ * ¿quest.json en disco es exactamente lo último que escribió (o cargó) el mod? Va por la cola serializada, así
+ * que ninguna escritura propia queda a medias: una diferencia solo puede venir de fuera. null = sin referencia.
+ */
+export function diskMatches(io: Io, root: string): Promise<boolean | null> {
+  return serial(async () => {
+    const known = lastText.get(root)
+    if (known === undefined) return null
+    return hash(await io.read(files(root).quest).catch(() => '')) === known
+  })
+}
+
 /** Comprobación estructural de una misión leída de disco (los datos de disco no son confiables). */
 export function isQuest(x: unknown): x is Quest {
   if (typeof x !== 'object' || x === null) return false
@@ -70,8 +85,13 @@ export type Loaded = { quest: Quest | null; source: 'file' | 'tmp' | 'store' | '
 export async function loadQuest(io: Io, root: string): Promise<Loaded> {
   const f = files(root)
   const problems: string[] = []
+  let fileText: string | null = null
   const candidates: [Loaded['source'], () => Promise<Quest | null>][] = [
-    ['file', async () => ((await io.exists(f.quest)) ? parse(await io.read(f.quest)) : null)],
+    ['file', async () => {
+      if (!(await io.exists(f.quest))) return null
+      fileText = await io.read(f.quest)
+      return parse(fileText)
+    }],
     ['tmp', async () => ((await io.exists(f.tmp)) ? parse(await io.read(f.tmp)) : null)],
     ['store', async () => {
       const v = await io.storeGet(storeKey(root))
@@ -84,7 +104,7 @@ export async function loadQuest(io: Io, root: string): Promise<Loaded> {
   } catch {
     problems.push('no se pudo comprobar quest.json')
   }
-  let best: { q: Quest; source: Loaded['source'] } | null = null
+  const valid: { q: Quest; source: Loaded['source'] }[] = []
   for (const [source, get] of candidates) {
     let q: Quest | null = null
     try {
@@ -100,10 +120,26 @@ export async function loadQuest(io: Io, root: string): Promise<Loaded> {
       problems.push(`${source}: la misión pertenece a otro proyecto (${q.project})`)
       continue
     }
-    // la más reciente entre las válidas (una escritura a medias deja el tmp por delante)
-    if (!best || q.rev > best.q.rev) best = { q, source }
+    valid.push({ q, source })
   }
-  if (!best) return { quest: null, source: 'none', problems }
+  if (!valid.length) return { quest: null, source: 'none', problems }
+  // $.store vive fuera del proyecto: el código del proyecto no lo escribe por accidente. Un archivo que va más
+  // de una revisión por delante (una escritura interrumpida solo deja una) o que difiere en la misma revisión
+  // no lo escribió este mod: se usa la copia de $.store y se avisa.
+  const store = valid.find(v => v.source === 'store')
+  const disk = valid.filter(v => v.source !== 'store').sort((a, b) => b.q.rev - a.q.rev)[0]
+  if (store && disk && disk.q.id === store.q.id) {
+    const ahead = disk.q.rev - store.q.rev
+    if (ahead > 1 || (ahead === 0 && JSON.stringify(disk.q) !== JSON.stringify(store.q))) {
+      problems.push(`posible manipulación: ${disk.source} (rev ${disk.q.rev}) no coincide con la copia del mod (rev ${store.q.rev})`)
+      return { quest: store.q, source: 'store', problems }
+    }
+    if (ahead < 0) return { quest: store.q, source: 'store', problems }
+    if (disk.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
+    return { quest: disk.q, source: disk.source, problems }
+  }
+  const best = [disk, store].filter(v => v !== undefined).sort((a, b) => b!.q.rev - a!.q.rev)[0]!
+  if (best.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
   return { quest: best.q, source: best.source, problems }
 }
 
@@ -114,12 +150,13 @@ export class Conflict extends Error {}
 
 /**
  * Guarda la misión (rev + 1). Rechaza si el archivo en disco tiene otra revisión (otro escritor o edición
- * externa): el llamante recarga. Devuelve la misión guardada.
+ * externa): el llamante no confía en el disco y detiene la misión por seguridad. `force` solo para registrar
+ * esa detención. Devuelve la misión guardada.
  */
-export function saveQuest(io: Io, q: Quest): Promise<Quest> {
+export function saveQuest(io: Io, q: Quest, opts: { force?: boolean } = {}): Promise<Quest> {
   return serial(async () => {
     const f = files(q.project)
-    if (await io.exists(f.quest)) {
+    if (!opts.force && (await io.exists(f.quest))) {
       const disk = parse(await io.read(f.quest))
       if (disk && disk.id === q.id && disk.rev > q.rev) throw new Conflict(`quest.json cambió en disco (rev ${disk.rev}, en memoria ${q.rev})`)
     }
@@ -129,6 +166,7 @@ export function saveQuest(io: Io, q: Quest): Promise<Quest> {
     const back = parse(await io.read(f.tmp))
     if (!back || back.rev !== next.rev) throw new Error('la copia temporal de quest.json no se pudo verificar')
     await io.write(f.quest, text)
+    lastText.set(q.project, hash(text))
     await io.storeSet(storeKey(q.project), next)
     return next
   })

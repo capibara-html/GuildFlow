@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { CheckDef, Quest } from '../types'
 import { agentSpawned, startTask } from '../src/machine'
+import { saveQuest } from '../src/persistence'
 import { countTests, diffScope, execute, fingerprint, judge, parsePorcelain, realOf } from '../src/verification'
 import { agent, approved, ok, ROOT } from './fixtures'
 import { memIo } from './memio'
@@ -75,6 +76,35 @@ describe('ejecución controlada', () => {
     expect(m.runs.length).toBe(0)
   })
 
+  test('el código bajo prueba que reescribe su test o quest.json durante la ejecución invalida el resultado', async () => {
+    for (const victim of [`${ROOT}/test/math.test.js`, `${ROOT}/.guildflow/quest.json`]) {
+      const box: { files?: Map<string, string> } = {}
+      const m = memIo(seed, () => {
+        box.files!.set(victim, 'manipulado')
+        return { exitCode: 0, stdout: '# tests 1', stderr: '' }
+      })
+      box.files = m.files
+      const q = await saveQuest(m.io, implementing())
+      q.baseline!.protectedHashes = await fingerprint(m.io, ROOT, ['test/'])
+      const x = await execute(m.io, q, DEF)
+      expect(x.integrity).toMatch(/modificó rutas protegidas|no coincide con lo último/)
+      expect(x.judged.pass).toBe(true) // el juez de salida no basta: register.tsx combina judged.pass && !integrity
+    }
+  })
+
+  test('regresión: el propio mod guardando quest.json durante la ejecución NO es manipulación', async () => {
+    const box: { io?: Parameters<typeof execute>[0]; q?: Quest } = {}
+    const m = memIo(seed, () => {
+      void saveQuest(box.io!, { ...box.q!, iterations: 2 }) // escritura concurrente legítima (contabilidad)
+      return { exitCode: 0, stdout: '# tests 1', stderr: '' }
+    })
+    box.io = m.io
+    box.q = await saveQuest(m.io, implementing())
+    const x = await execute(m.io, box.q, DEF)
+    expect(x.integrity).toBeNull()
+    expect(x.judged.pass).toBe(true)
+  })
+
   test('directorio de trabajo que escapa del proyecto por un enlace', async () => {
     const m = memIo({ ...seed, 'c:/fuera/x': '1' }, undefined, { links: { [`${ROOT}/link`]: 'c:/fuera' } })
     const x = await execute(m.io, implementing(), { ...DEF, cwd: 'link' })
@@ -96,7 +126,13 @@ describe('rutas reales', () => {
 
 describe('diff-scope', () => {
   const git = (status: string) => (argv: readonly string[]) =>
-    argv[1] === 'status' ? { exitCode: 0, stdout: status, stderr: '' } : argv[1] === 'diff' ? { exitCode: 0, stdout: '3\t1\tsrc/math.js\n', stderr: '' } : { exitCode: 0, stdout: '', stderr: '' }
+    argv.includes('status')
+      ? { exitCode: 0, stdout: status, stderr: '' }
+      : argv.includes('diff')
+        ? { exitCode: 0, stdout: '3\t1\tsrc/math.js\n', stderr: '' }
+        : argv.includes('rev-parse')
+          ? { exitCode: 0, stdout: 'abc\n', stderr: '' }
+          : { exitCode: 0, stdout: '', stderr: '' }
   const withGit = (q: Quest) => {
     q.baseline = { gitRoot: ROOT, head: 'abc', dirty: ['notes.txt'], protectedHashes: {} }
     return q
@@ -115,6 +151,17 @@ describe('diff-scope', () => {
     const s = await diffScope(m.io, withGit(implementing()))
     expect(s.pass).toBe(false)
     expect(s.outOfScope).toEqual(['readme.md']) // NTFS: rutas normalizadas en minúsculas
+  })
+  test('HEAD movido desde la aprobación (commit que esconde el diff) → FAIL', async () => {
+    const m = memIo({}, (argv: readonly string[]) => (argv.includes('rev-parse') ? { exitCode: 0, stdout: 'otro\n', stderr: '' } : git(' M src/math.js\0')(argv)))
+    const s = await diffScope(m.io, withGit(implementing()))
+    expect(s.reason).toContain('HEAD cambió')
+  })
+  test('git del mod sin fsmonitor ni drivers externos', async () => {
+    const m = memIo({}, git(' M src/math.js\0'))
+    await diffScope(m.io, withGit(implementing()))
+    for (const r of m.runs) expect(r.argv.slice(0, 3)).toEqual(['git', '-c', 'core.fsmonitor=false'])
+    expect(m.runs.find(r => r.argv.includes('diff'))?.argv).toContain('--no-textconv')
   })
   test('diff vacío → FAIL (la subtarea no hizo nada)', async () => {
     const m = memIo({}, git(''))

@@ -2,8 +2,8 @@
 // función decide con hechos ya resueltos. El orden de las comprobaciones está documentado en
 // docs/09-security-review.md y fijado por tests/policy.test.ts.
 import type { Effort, Quest, Role } from '../types'
-import { isStopped } from './machine'
-import { inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, type PathEntry } from './validation'
+import { isStopped, isWorking } from './machine'
+import { inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, sensitivePath, type PathEntry } from './validation'
 
 export const PLUGIN = 'guildflow'
 export const TOOL = {
@@ -27,8 +27,13 @@ export const roleOfType = (type: string): Role | null => (Object.keys(ROLES) as 
 const WRITE_TOOLS = ['Edit', 'Write', 'NotebookEdit']
 const READ_TOOLS = ['Read', 'Grep', 'Glob']
 const SHELL_TOOLS = ['Bash', 'PowerShell']
-/** Lo que el Maestro usa sin preguntar durante una misión: lectura, coordinación y las herramientas del gremio. */
-const MAIN_SAFE = ['Read', 'Grep', 'Glob', 'AskUserQuestion', 'TodoWrite', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'Skill', 'ToolSearch', 'Agent', 'WebFetch', 'WebSearch']
+/** Lo que el Maestro usa sin preguntar durante una misión: lectura, coordinación, avisos y las herramientas del gremio. */
+const MAIN_SAFE = [
+  'Read', 'Grep', 'Glob', 'AskUserQuestion', 'TodoWrite', 'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TaskStop', 'TaskOutput', 'Skill', 'ToolSearch', 'Agent', 'WebFetch', 'WebSearch',
+  'PushNotification', 'ReadNotifications', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'ListAgents', 'ListMcpResourcesTool', 'ReadMcpResourceTool',
+  'mcp__ccd_session_mgmt__get_usage', 'mcp__ccd_session__mark_chapter',
+]
+const MAIN_HINT = 'Durante la misión el Maestro coordina: los archivos los escribe un Artífice y las comprobaciones se ejecutan con run_check. Si la persona necesita otra cosa, que detenga la misión con /quest-halt.'
 
 /** Rutas que lee o escribe una llamada, según la herramienta. undefined = forma desconocida (se rechaza). */
 export function pathArgs(tool: string, input: Record<string, unknown>): { reads: string[]; writes: string[]; patterns: string[] } | undefined {
@@ -95,8 +100,11 @@ export function protectedEntries(q: Quest): PathEntry[] {
  *  4. subagente: rol conocido → lista blanca del rol → herramienta propia → estado de misión y plaza
  *     → lecturas dentro del proyecto → escrituras dentro de las rutas de la subtarea, fuera de las
  *     protegidas y dentro del límite de archivos
- *  5. Maestro: herramientas propias → lectura y coordinación → escrituras (dentro del proyecto se
- *     rechazan; fuera se pregunta) → shell (solo lectura sin preguntar) → cualquier otra se pregunta
+ *  5. Maestro: herramientas propias → misión que no trabaja (detenida, terminada o esperando aprobación):
+ *     sin cambios → lectura, coordinación y avisos → escrituras (dentro del proyecto se rechazan; fuera se
+ *     pregunta) → shell (solo lectura pasa; lo sensible se pregunta; el resto se rechaza con explicación)
+ *     → MCP ajeno (sistema externo) se pregunta → cualquier otra se rechaza con explicación.
+ *     Se rechaza en vez de preguntar: el modelo lee el motivo y sigue sin interrumpir a la persona.
  */
 export function decide(f: Facts): Decision {
   if (typeof f.tool !== 'string' || !f.tool) return deny('1-tool', 'llamada sin herramienta reconocible')
@@ -132,6 +140,8 @@ export function decide(f: Facts): Decision {
           return deny('4-write', `ruta protegida (estado del gremio o definición de una comprobación): ${w.slice(f.root.length + 1)}`)
         const entries = task.paths.map(p => parseEntry(p) as PathEntry)
         if (!entries.some(e => matchesEntry(w, f.root, e))) return deny('4-write', `${task.id} solo puede escribir en ${task.paths.join(', ')}; rechazado: ${w.slice(f.root.length + 1)}`)
+        const why = q.approval?.by === 'auto' ? sensitivePath(w.slice(f.root.length + 1)) : null
+        if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(f.root.length + 1)} es sensible (${why}) y necesita un plan aprobado por la persona`)
         if (!q.filesWritten.includes(w)) fresh += 1
       }
       if (q.filesWritten.length + fresh > q.limits.maxFilesChanged) return deny('4-limit', `límite de ${q.limits.maxFilesChanged} archivos modificados por misión`)
@@ -140,19 +150,21 @@ export function decide(f: Facts): Decision {
   }
 
   if (OWN_TOOLS.includes(f.tool)) return { kind: 'own', step: '5-own' }
-  if (!q) return { kind: 'allow', step: '3-no-quest' }
+  if (!isWorking(q)) return { kind: 'allow', step: '3-not-working' }
   if (MAIN_SAFE.includes(f.tool)) return { kind: 'allow', step: '5-safe' }
   if (WRITE_TOOLS.includes(f.tool)) {
-    if (f.writes.some(w => w === null || inside(w, f.root))) return deny('5-write', `durante la misión ${q.id} los archivos del proyecto los escribe un Artífice (o la ruta no es resoluble)`)
+    if (f.writes.some(w => w === null || inside(w, f.root))) return deny('5-write', `durante la misión ${q.id} los archivos del proyecto los escribe un Artífice (o la ruta no es resoluble). ${MAIN_HINT}`)
     return { kind: 'ask', step: '5-write', question: `El Maestro quiere escribir fuera del proyecto (${f.writes.join(', ')}) durante la misión ${q.id}. ¿Permitir esta vez?` }
   }
   if (SHELL_TOOLS.includes(f.tool)) {
     const cmd = f.command ?? ''
     if (readOnlyShell(cmd)) return { kind: 'allow', step: '5-shell' }
     const why = sensitiveCommand(cmd)
-    return { kind: 'ask', step: '5-shell', question: `Misión ${q.id}: el Maestro quiere ejecutar ${f.tool}${why ? ` (SENSIBLE: ${why})` : ''}: ${cmd.slice(0, 300)} ¿Permitir esta vez?` }
+    if (why) return { kind: 'ask', step: '5-shell', question: `Misión ${q.id}: el Maestro quiere ejecutar ${f.tool} (SENSIBLE: ${why}): ${cmd.slice(0, 300)} ¿Permitir esta vez?` }
+    return deny('5-shell', `el Maestro no usa la shell durante la misión ${q.id}. ${MAIN_HINT}`)
   }
-  return { kind: 'ask', step: '5-unknown', question: `Misión ${q.id}: el Maestro quiere usar ${f.tool}, que GuildFlow no clasifica. ¿Permitir esta vez?` }
+  if (f.tool.startsWith('mcp__')) return { kind: 'ask', step: '5-external', question: `Misión ${q.id}: el Maestro quiere usar ${f.tool} (sistema externo que GuildFlow no clasifica). ¿Permitir esta vez?` }
+  return deny('5-unknown', `${f.tool} no forma parte del protocolo de la misión ${q.id}. ${MAIN_HINT}`)
 }
 
 export const READ_ONLY_TOOLS = READ_TOOLS

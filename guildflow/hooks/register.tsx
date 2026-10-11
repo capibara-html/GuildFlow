@@ -8,9 +8,9 @@ import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { decide, OWN_TOOLS, pathArgs, protectedEntries, ROLES, roleOfType, TOOL, type Caller } from '../src/policy'
-import { band, fmtTokens, pane, statusText, summaryMarkdown } from '../src/presentation'
-import { checkOverlaps, exactArgs, isCheckId, isTaskId, limitsFrom, normalizeAbs, validatePlan } from '../src/validation'
-import { autoProtects, diffScope, execute, fingerprint, parsePorcelain, realOf } from '../src/verification'
+import { APPROVAL_MAX, approvalText, band, pane, statusText, summaryMarkdown } from '../src/presentation'
+import { checkOverlaps, exactArgs, isCheckId, isTaskId, limitsFrom, normalizeAbs, sensitivePlan, validatePlan } from '../src/validation'
+import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
 
 type Raw = Record<string, unknown>
 type $ = EngineInterface
@@ -94,8 +94,17 @@ async function commit($: $, o: M.Outcome): Promise<M.Outcome> {
     return { ...o, quest: saved }
   } catch (err) {
     if (err instanceof Conflict) {
-      loaded = false
-      await current($)
+      // Otro escritor (o código del proyecto) cambió quest.json: no se recarga lo de disco. Se conserva la copia
+      // ajena para inspección y se detiene la misión por seguridad con el estado que el mod conoce.
+      const at = await $.clock.now()
+      await quarantine(io($), o.quest.project, at).catch(() => undefined)
+      const h = M.halt(o.quest, 'safety', `quest.json se modificó fuera del mod: ${String(err.message)}`, at)
+      if (h.ok) {
+        QUEST = await saveQuest(io($), h.quest, { force: true }).catch(() => h.quest)
+        await setView($)
+        await appendLog(io($), o.quest.project, h.log, { questId: o.quest.id, at }).catch(() => undefined)
+        $.ui.toast(`${PREFIX}: misión detenida por seguridad: quest.json cambió fuera del mod`)
+      }
     }
     return { ok: false, error: `no se pudo guardar el estado: ${String(err)}` }
   }
@@ -178,7 +187,7 @@ function brief(q: Quest, role: Role): string {
 
 async function baselineFor($: $, q: Quest): Promise<Baseline> {
   const root = q.project
-  const git = (args: string[], cwd = root) => $.process.run(['git', ...args], { cwd, timeoutMs: 30_000 }).catch(() => null)
+  const git = (args: string[], cwd = root) => $.process.run(gitArgv(args), { cwd, timeoutMs: 30_000 }).catch(() => null)
   const top = await git(['rev-parse', '--show-toplevel'])
   const gitRoot = top && top.exitCode === 0 ? normalizeAbs(top.stdout.trim(), root) : null
   const head = gitRoot ? await git(['rev-parse', 'HEAD'], gitRoot) : null
@@ -192,17 +201,23 @@ async function baselineFor($: $, q: Quest): Promise<Baseline> {
   }
 }
 
-/** La aprobación SOLO sale del diálogo que el mod abre a la persona ($.ui.ask); nunca de un modelo. */
+/**
+ * La aprobación sale del diálogo que el mod abre a la persona ($.ui.ask), nunca de un modelo; o, si la persona
+ * activó autoApprovePlan, del propio mod cuando el plan no toca nada sensible (sensitivePlan).
+ */
 async function askApproval($: $): Promise<string> {
   const q = QUEST
   if (!q || q.state !== 'AWAITING_APPROVAL' || !q.plan) return 'No hay un plan pendiente de aprobación.'
-  const plan = q.plan
-  const tasks = plan.tasks.map(t => `${t.id} → ${t.paths.join(', ')}`).join(' | ')
-  const checks = plan.checks.map(k => `${k.id}: ${k.argv.join(' ')}`).join(' | ') || 'ninguna'
-  const question =
-    `${PREFIX} ${q.id}: ${plan.objective.slice(0, 300)} — Subtareas y rutas: ${tasks.slice(0, 600)} — Comprobaciones: ${checks.slice(0, 400)} — ` +
-    `Límites: ${q.limits.maxAttemptsPerTask} intentos/subtarea, ${q.limits.maxQuestIterations} iteraciones, ${fmtTokens(q.limits.tokenBudgetPerQuest)} tokens, $${q.limits.costBudgetUsd} equiv., ${q.limits.wallClockMinutes} min. ` +
-    `Detalle completo en el panel (/quest-status). ¿Apruebas el plan?`
+  const sensitive = sensitivePlan(q.plan)
+  if (OPTIONS.autoApprovePlan === true && !sensitive.length) {
+    const baseline = await baselineFor($, q)
+    const o = await mutate($, (x, t) => M.approve(x, { by: 'auto', answer: 'autoApprovePlan', baseline }, t))
+    if (o.ok) $.ui.toast(`${PREFIX}: plan de ${q.id} aprobado automáticamente (autoApprovePlan)`)
+    return o.ok ? `Plan APROBADO automáticamente (autoApprovePlan; sin rutas sensibles). Siguiente: ${M.nextStep(o.quest)}` : `No se pudo registrar la aprobación: ${o.error}`
+  }
+  if (OPTIONS.autoApprovePlan === true) await note($, 'approval.needs_human', { reasons: sensitive })
+  const question = approvalText(q.id, q.plan, q.limits)
+  if (!question) return `El plan no cabe completo en el diálogo (${APPROVAL_MAX} caracteres): divídelo en misiones más pequeñas. No se aprueba un plan que la persona no puede leer entero.`
   let answer: string
   try {
     answer = await $.ui.ask(question, { options: ['Aprobar', 'Rechazar'], header: 'GuildFlow' })
@@ -320,7 +335,9 @@ const refuse = (why: string): ToolCallResult => ({ deny: `${PREFIX}: ${why}` })
 async function serveQuest($: $, e: Raw, caller: Caller): Promise<ToolCallResult> {
   if (caller.kind !== 'main') return refuse('la herramienta quest es solo del Maestro')
   const q = await current($)
-  if (!M.isActive(q)) return res('No hay misión activa. La persona abre una con /quest <petición>.')
+  const auto = `Aprobación automática de planes (autoApprovePlan): ${OPTIONS.autoApprovePlan === true ? 'activada' : 'desactivada'}.`
+  if (!M.isActive(q)) return res(`No hay misión activa. La persona abre una con /quest <petición>.
+${auto}`)
   const t = await $.clock.now()
   const action = e.action
   const shape: Record<string, string[]> = { status: [], submit_plan: ['plan'], start_task: ['taskId'], start_review: [], verify: [], block: ['reason'] }
@@ -329,7 +346,8 @@ async function serveQuest($: $, e: Raw, caller: Caller): Promise<ToolCallResult>
   if (bad) return refuse(bad)
   switch (action) {
     case 'status':
-      return res(statusText(q, t))
+      return res(`${statusText(q, t)}
+${auto}`)
     case 'submit_plan': {
       let plan = e.plan
       if (typeof plan === 'string') {
@@ -344,6 +362,7 @@ async function serveQuest($: $, e: Raw, caller: Caller): Promise<ToolCallResult>
       for (const k of v.plan.checks) k.protects = await autoProtects(io($), q.project, k)
       const ov = checkOverlaps(v.plan)
       if (ov.errors.length) return res({ ok: false, errors: ov.errors })
+      if (!approvalText(q.id, v.plan, q.limits)) return res({ ok: false, errors: [`el plan no cabe completo en el diálogo de aprobación (${APPROVAL_MAX} caracteres); divídelo`] })
       const o = await mutate($, (x, now) => M.submitPlan(x, v.plan, now))
       if (!o.ok) return res({ ok: false, errors: [o.error] })
       const approval = await askApproval($)
@@ -426,7 +445,7 @@ async function cmdQuest($: $, args: string): Promise<string> {
       'Sigue la skill guildflow (protocolo de misión): analiza objetivo, alcance, restricciones, riesgos y archivos afectados; si falta información esencial para definir criterios verificables, pregúntala; ' +
       'planifica tú mismo si es sencilla o invoca a guildflow:archimago si es compleja; después envía el plan con mcp__guildflow__quest {"action":"submit_plan","plan":{...}}. La aprobación la pide el mod a la persona.',
   })
-  return `Misión ${created.quest.id} creada (${created.quest.state}). El Maestro preparará el plan; la aprobación se pedirá en un diálogo.`
+  return `Misión ${created.quest.id} creada (${created.quest.state}). El Maestro preparará el plan; ${OPTIONS.autoApprovePlan === true ? 'si no toca nada sensible se aprobará automáticamente, si no se pedirá en un diálogo' : 'la aprobación se pedirá en un diálogo'}.`
 }
 
 async function cmdHalt($: $): Promise<string> {
@@ -528,8 +547,12 @@ export const register: Register = (on, options) => {
         await note($, 'load.problems', { problems: l.problems, source: l.source })
         $.ui.toast(`${PREFIX}: estado recuperado con incidencias (${l.source}): ${l.problems[0]}`)
       }
-      if (QUEST && tampered(QUEST) && !(QUEST.state === 'HALTED' && QUEST.haltKind === 'safety') && M.isActive(QUEST))
-        await mutate($, (x, t) => M.halt(x, 'safety', 'el plan aprobado se modificó fuera del mod', t))
+      const manip = l.problems.find(p => p.startsWith('posible manipulación'))
+      if (QUEST && (tampered(QUEST) || manip) && !(QUEST.state === 'HALTED' && QUEST.haltKind === 'safety') && M.isActive(QUEST)) {
+        const why = manip ?? 'el plan aprobado se modificó fuera del mod'
+        const at = await $.clock.now()
+        await locked(() => commit($, M.halt(QUEST!, 'safety', why, at)))
+      }
       const restarted = !boot || boot.sessionId !== sessionId
       if (restarted && M.isActive(QUEST) && (QUEST.agents.some(a => a.status === 'running') || !M.isStopped(QUEST))) {
         const o = await mutate($, (x, t) => M.recover(x, t))

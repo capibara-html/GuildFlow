@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, validatePlan } from '../src/validation'
+import { limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
 import { LIMITS, RAW_PLAN } from './fixtures'
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -100,14 +100,19 @@ describe('comandos y límites', () => {
       expect(sensitiveCommand(c)).not.toBeNull()
     expect(sensitiveCommand('git status')).toBeNull()
   })
-  test('shell de solo lectura del Maestro sin metacaracteres', () => {
-    expect(readOnlyShell('git status --short')).toBe(true)
-    expect(readOnlyShell('git log --oneline -n5')).toBe(true)
-    // flags con efectos (escribir archivos, ejecutar drivers externos) y diff/show (textconv) piden permiso
-    for (const c of ['git diff --output=x.txt', 'git diff HEAD', 'git show HEAD', 'git log --ext-diff -p', 'git log --format=%x00', 'git status --porcelain --output=x', 'ls --hide-control-chars=x'])
+  test('shell de solo lectura del Maestro: listar el proyecto, nada más', () => {
+    for (const c of ['ls', 'ls -la src', 'dir src\\lib', 'pwd', 'Get-ChildItem -Recurse src']) expect(readOnlyShell(c)).toBe(true)
+    // git (fsmonitor/textconv/diff.external ejecutan programas), flags con efectos, rutas UNC/absolutas/.. piden permiso
+    for (const c of ['git status', 'git log --oneline', 'git diff --output=x.txt', 'ls --hide-control-chars=x', 'ls \\\\attacker\\share', 'dir //host/x', 'dir C:\\Users', 'ls /etc', 'ls ~', 'ls ../..', 'ls src/../..'])
       expect(readOnlyShell(c)).toBe(false)
-    for (const c of ['git status; rm -rf x', 'git log | sh', 'echo $(whoami)', 'node x.js', 'git push'])
-      expect(readOnlyShell(c)).toBe(false)
+    for (const c of ['ls; rm -rf x', 'ls | sh', 'echo $(whoami)', 'node x.js', 'git push']) expect(readOnlyShell(c)).toBe(false)
+  })
+  test('comprobaciones: intérpretes y git sin código ni configuración en línea', () => {
+    for (const argv of [['node', '-e', 'require("fs")'], ['node', '--eval=1', 't.js'], ['node', '--require', './x.js', 't.js'], ['node', '--import=./x.mjs', 't.js'], ['python', '-c', 'print(1)'], ['git', '-c', 'core.pager=sh', 'status'], ['git', '-C', '..', 'status'], ['deno', 'eval', '1'], ['bun', '-e', '1']]) {
+      const b = clone(RAW_PLAN) as Record<string, any>
+      b.checks[0].argv = argv
+      expect(errorsOf(b).join()).toMatch(/en línea|deno eval/)
+    }
   })
   test('userConfig se acota a los topes del plugin', () => {
     const l = limitsFrom({ maxAttemptsPerTask: 999, maxConcurrentAgents: 50, tokenBudgetPerQuest: -1, allowedExecutables: 'node, EVIL.cmd ,git' })
@@ -116,5 +121,24 @@ describe('comandos y límites', () => {
     expect(l.tokenBudgetPerQuest).toBe(10_000)
     expect(l.allowedExecutables).toEqual(['node', 'git'])
     expect(limitsFrom({}).maxDiffLines).toBe(1500)
+  })
+})
+
+describe('planes sensibles (no se aprueban automáticamente)', () => {
+  const plan = (paths: string[], complexity = 'small') => {
+    const raw = clone(RAW_PLAN) as typeof RAW_PLAN & { complexity: string }
+    raw.tasks[0].paths = paths
+    raw.complexity = complexity
+    const v = validatePlan(raw, LIMITS)
+    if (!v.ok) throw new Error(v.errors.join('; '))
+    return v.plan
+  }
+  test('código normal: sin motivos', () => {
+    expect(sensitivePlan(plan(['src/math.js', 'lib/']))).toEqual([])
+  })
+  test('dependencias, CI, migraciones, secretos, configuración del repo y complejidad large', () => {
+    for (const p of ['package.json', 'apps/web/package-lock.json', '.github/', 'Dockerfile', 'prisma/', 'db/migrations/', '.env', 'config/secrets.json', '.husky/', 'infra/main.tf'])
+      expect(sensitivePlan(plan([p])).length).toBe(1)
+    expect(sensitivePlan(plan(['src/math.js'], 'large'))).toEqual(['complejidad large'])
   })
 })

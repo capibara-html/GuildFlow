@@ -53,6 +53,19 @@ describe('tool.call (guarda central)', () => {
     expect(w.ran.length).toBe(0)
   })
 
+  test('quest.json cambiado por fuera durante la misión → detención por seguridad, sin creer al disco', async ($, on) => {
+    const w = world(on, { quest: implementing() })
+    expect(denied(await call($, { tool: 'Read', file_path: `${ROOT}/src/math.js`, agentId: 'art' }))).toBeUndefined()
+    const forged = { ...saved(w), rev: 99, state: 'DONE' }
+    w.files.set(files(ROOT).quest, JSON.stringify(forged))
+    await call($, { tool: 'Write', file_path: `${ROOT}/src/math.js`, content: 'x', agentId: 'art' })
+    const s = saved(w)
+    expect(s.state).toBe('HALTED')
+    expect(s.haltKind).toBe('safety')
+    expect([...w.files.keys()].some(k => k.includes('quest.corrupt-'))).toBe(true)
+    expect(denied(await call($, { tool: 'Write', file_path: `${ROOT}/src/math.js`, content: 'y', agentId: 'art' }))).toBeDefined()
+  })
+
   test('SubagentHandback pasa aunque la misión esté detenida', async ($, on) => {
     const q = implementing()
     q.state = 'HALTED'
@@ -61,13 +74,26 @@ describe('tool.call (guarda central)', () => {
     expect(w.ran).toContain('SubagentHandback')
   })
 
-  test('el Maestro no escribe el proyecto durante la misión; lo desconocido pide permiso a la persona', async ($, on) => {
+  test('el Maestro no escribe el proyecto ni usa la shell durante la misión, sin preguntar; un MCP ajeno sí pregunta', async ($, on) => {
     const w = world(on, { quest: implementing(), answers: ['Denegar', 'Permitir una vez'] })
     expect(denied(await call($, { tool: 'Edit', file_path: `${ROOT}/src/math.js`, old_string: 'a', new_string: 'b' }))).toBeDefined()
+    expect(denied(await call($, { tool: 'Bash', command: 'npm test' }))).toContain('run_check')
+    expect(w.asked.length).toBe(0)
     expect(denied(await call($, { tool: 'mcp__aseprite__draw_pixels' }))).toBeDefined()
     expect(denied(await call($, { tool: 'mcp__aseprite__draw_pixels' }))).toBeUndefined()
     expect(w.asked.length).toBe(2)
     expect(w.ran).toEqual(['mcp__aseprite__draw_pixels'])
+  })
+
+  test('misión detenida: el Maestro trabaja sin diálogos de GuildFlow', async ($, on) => {
+    const q = implementing()
+    q.state = 'HALTED'
+    q.haltKind = 'safety'
+    const w = world(on, { quest: q })
+    expect(denied(await call($, { tool: 'Bash', command: 'npm test' }))).toBeUndefined()
+    expect(denied(await call($, { tool: 'Edit', file_path: `${ROOT}/src/math.js`, old_string: 'a', new_string: 'b' }))).toBeUndefined()
+    expect(w.asked.length).toBe(0)
+    expect(w.ran).toEqual(['Bash', 'Edit'])
   })
 
   test('sin misión activa GuildFlow no interfiere con el Maestro', async ($, on) => {
@@ -176,6 +202,35 @@ describe('herramienta quest y aprobación humana', () => {
     expect(String(r.result)).toContain('No hay misión activa')
     expect(denied(await call($, { tool: 'mcp__guildflow__run_check', check: 'unit' }))).toContain('plan aprobado')
     expect(w.ran.length).toBe(0)
+  })
+
+  test('autoApprovePlan desactivado (por defecto): sigue preguntando a la persona', async ($, on) => {
+    const q = planned()
+    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: ['Aprobar'] })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
+    expect(w.asked.length).toBe(1)
+    expect(saved(w).approval?.by).toBe('human')
+  })
+
+  test('autoApprovePlan activado y plan sin rutas sensibles: se aprueba sin diálogo', { options: { autoApprovePlan: true } }, async ($, on) => {
+    const q = planned()
+    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 } })
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
+    expect(String(r.result)).toContain('automáticamente')
+    expect(w.asked.length).toBe(0)
+    const s = saved(w)
+    expect(s.state).toBe('DISPATCH')
+    expect(s.approval?.by).toBe('auto')
+  })
+
+  test('autoApprovePlan activado pero el plan toca dependencias: decide la persona', { options: { autoApprovePlan: true } }, async ($, on) => {
+    const q = planned()
+    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: ['Rechazar'] })
+    const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN
+    raw.tasks[0].paths = ['src/math.js', 'package.json']
+    await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: raw })
+    expect(w.asked.length).toBe(1)
+    expect(saved(w).state).toBe('PLANNING')
   })
 
   test('un subagente no puede usar la herramienta quest', async ($, on) => {

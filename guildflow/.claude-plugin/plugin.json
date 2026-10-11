@@ -21,6 +21,7 @@
     "maxTurnsArchimago": { "type": "number", "title": "Turnos del Archimago", "description": "Peticiones al modelo por ejecución (tope: 60)", "default": 25, "min": 1 },
     "maxTurnsArtifice": { "type": "number", "title": "Turnos del Artífice", "description": "Peticiones al modelo por ejecución (tope: 80)", "default": 40, "min": 1 },
     "maxTurnsPaladin": { "type": "number", "title": "Turnos del Paladín", "description": "Peticiones al modelo por ejecución (tope: 60)", "default": 25, "min": 1 },
+    "autoApprovePlan": { "type": "boolean", "title": "Aprobar planes automáticamente", "description": "Desactivado por defecto. Si se activa, el mod aprueba solo los planes que no tocan dependencias, CI/despliegue, migraciones, secretos ni configuración del repositorio y no son de complejidad large; el resto sigue pidiendo aprobación humana", "default": false },
     "archimagoEffort": { "type": "string", "title": "Esfuerzo del Archimago", "description": "high por defecto; xhigh para misiones arquitectónicas", "default": "high", "options": ["high", "xhigh"] },
     "allowedExecutables": { "type": "string", "title": "Ejecutables de verificación", "description": "Lista separada por comas de ejecutables que pueden declararse en las comprobaciones", "default": "node,git,tsc,python,py,pytest,cargo,go,dotnet,deno,bun" }
   }

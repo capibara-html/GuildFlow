@@ -143,7 +143,7 @@ export type CheckRun = {
   at: number
 }
 
-export type Approval = { by: 'human'; at: number; planHash: string; answer: string }
+export type Approval = { by: 'human' | 'auto'; at: number; planHash: string; answer: string }
 
 /** Línea base al aprobar: HEAD, archivos ya sucios (relativos a gitRoot) y huellas de las rutas protegidas. */
 export type Baseline = { gitRoot: string | null; head: string | null; dirty: string[]; protectedHashes: Record<string, string> }

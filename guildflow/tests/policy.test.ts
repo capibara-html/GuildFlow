@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
-import { agentSpawned, halt, startTask } from '../src/machine'
+import { agentSpawned, approve, block, halt, pause, startTask } from '../src/machine'
 import { decide, TOOL, type Facts } from '../src/policy'
-import { agent, approved, ok, ROOT } from './fixtures'
+import { agent, approved, ok, planned, RAW_PLAN, ROOT } from './fixtures'
 
 function implementing(): Quest {
   let q = ok(startTask(approved(), 't1', 3))
@@ -84,13 +84,52 @@ describe('Maestro durante una misión', () => {
   test('escribir el proyecto se rechaza: lo hace un Artífice', () => {
     expect(decide(facts(implementing(), { tool: 'Edit', writes: [`${ROOT}/src/math.js`] })).kind).toBe('deny')
   })
-  test('shell: solo lectura pasa; lo demás pide aprobación humana y marca lo sensible', () => {
-    expect(decide(facts(implementing(), { tool: 'Bash', command: 'git status' })).kind).toBe('allow')
+  test('shell: solo lectura pasa; lo sensible pide aprobación; el resto se rechaza con explicación, sin preguntar', () => {
+    expect(decide(facts(implementing(), { tool: 'Bash', command: 'ls src' })).kind).toBe('allow')
+    const plain = decide(facts(implementing(), { tool: 'Bash', command: 'git status' }))
+    expect(plain.kind).toBe('deny')
+    if (plain.kind === 'deny') expect(plain.reason).toContain('run_check')
     const d = decide(facts(implementing(), { tool: 'Bash', command: 'git push origin main' }))
     expect(d.kind).toBe('ask')
     if (d.kind === 'ask') expect(d.question).toContain('SENSIBLE')
+    expect(decide(facts(implementing(), { tool: 'PowerShell', command: 'npm install left-pad' })).kind).toBe('ask')
   })
-  test('herramienta desconocida (MCP con escritura) pide aprobación, no se hereda', () => {
+  test('MCP ajeno (sistema externo) pide aprobación; herramienta interna desconocida se rechaza sin preguntar', () => {
     expect(decide(facts(implementing(), { tool: 'mcp__aseprite__draw_pixels' })).kind).toBe('ask')
+    expect(decide(facts(implementing(), { tool: 'EnterWorktree' })).kind).toBe('deny')
+  })
+  test('avisos, uso y programación de tareas pasan sin preguntar', () => {
+    for (const tool of ['PushNotification', 'CronCreate', 'mcp__ccd_session_mgmt__get_usage', 'ReadNotifications'])
+      expect(decide(facts(implementing(), { tool })).kind).toBe('allow')
+  })
+})
+
+describe('Maestro con la misión sin trabajar', () => {
+  test('detenida, bloqueada, en pausa, terminada o esperando aprobación: el Maestro vuelve a ser Claude Code normal', () => {
+    const done = implementing()
+    done.state = 'DONE'
+    const stopped = [ok(halt(implementing(), 'safety', 'x', 4)), ok(block(implementing(), 'x', 4)), ok(pause(implementing(), 'x', 4)), done, planned()]
+    for (const q of stopped) {
+      expect(decide(facts(q, { tool: 'Bash', command: 'npm test' })).kind).toBe('allow')
+      expect(decide(facts(q, { tool: 'Edit', writes: [`${ROOT}/src/math.js`] })).kind).toBe('allow')
+    }
+  })
+  test('los agentes del gremio siguen sin actuar con la misión detenida', () => {
+    const q = ok(halt(implementing(), 'user', 'alto', 4))
+    expect(decide(facts(q, { tool: 'Read', caller: asArt, reads: [`${ROOT}/src/math.js`] })).kind).toBe('deny')
+  })
+})
+
+describe('plan aprobado automáticamente', () => {
+  test('el Artífice no escribe rutas sensibles aunque caigan dentro de su directorio', () => {
+    const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN
+    raw.tasks[0].paths = ['pkg/']
+    const base = { gitRoot: null, head: null, dirty: [], protectedHashes: {} }
+    let q = ok(approve(planned(raw), { by: 'auto', answer: 'autoApprovePlan', baseline: base }, 2))
+    q = ok(startTask(q, 't1', 3))
+    q = ok(agentSpawned(q, agent('art', 'artifice', 't1'), 3))
+    expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [`${ROOT}/pkg/index.js`] })).kind).toBe('allow')
+    for (const w of [`${ROOT}/pkg/package.json`, `${ROOT}/pkg/.env.local`, `${ROOT}/pkg/migrations/001.sql`])
+      expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [w] })).kind).toBe('deny')
   })
 })

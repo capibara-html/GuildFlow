@@ -116,23 +116,49 @@ export function sensitiveCommand(cmd: string): string | null {
   return null
 }
 
-// Flags admitidos sin preguntar. Lista blanca: `--output`, `--ext-diff`, `--textconv`, `-c`, `--exec`… quedan fuera.
-const SAFE_FLAGS = /^(--short|-s|-b|--branch|--porcelain(=v[12])?|--oneline|--stat|--name-only|--name-status|--graph|--decorate|--all|--no-color|--cached|--staged|--show-toplevel|--show-prefix|--abbrev-ref|--verify|-n\d{1,4}|-\d{1,4}|--max-count=\d{1,4}|-v|-a|-l|-la|-Force|-Recurse|-Name|--)$/i
+const SENSITIVE_PATHS: [RegExp, string][] = [
+  [/(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-(lock|workspace)\.yaml|bun\.lockb?|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|pipfile(\.lock)?|setup\.(py|cfg)|cargo\.(toml|lock)|go\.(mod|sum)|[^/]+\.(csproj|fsproj|sln)|nuget\.config|gemfile(\.lock)?|composer\.(json|lock)|\.npmrc|\.yarnrc(\.yml)?)$/i, 'dependencias'],
+  [/(^|\/)(\.github|\.gitlab-ci\.yml|\.circleci|azure-pipelines\.yml|jenkinsfile|dockerfile|docker-compose[^/]*|compose\.ya?ml|[^/]+\.tf|k8s|helm|vercel\.json|netlify\.toml|fly\.toml|\.vercel)(\/|$)/i, 'CI o despliegue'],
+  [/(^|\/)(migrations?|prisma|schema\.sql)(\/|$)/i, 'migraciones o esquema de datos'],
+  [/(^|\/)(\.env[^/]*|secrets?|credentials?)(\/|$|\.)/i, 'secretos o entorno'],
+  [/(^|\/)(\.gitattributes|\.gitmodules|\.husky|\.githooks|\.vscode|\.idea)(\/|$)/i, 'configuración del repositorio o del editor'],
+]
+
+/** Motivo por el que escribir en una ruta relativa del proyecto es sensible, o null. */
+export function sensitivePath(rel: string): string | null {
+  for (const [re, why] of SENSITIVE_PATHS) if (re.test(rel.replace(/\\/g, '/'))) return why
+  return null
+}
+
+/** Motivos por los que un plan necesita aprobación humana aunque autoApprovePlan esté activado ([] = ninguno). */
+export function sensitivePlan(plan: Plan): string[] {
+  const out: string[] = []
+  if (plan.complexity === 'large') out.push('complejidad large')
+  for (const t of plan.tasks) for (const p of t.paths) {
+    const why = sensitivePath(p)
+    if (why) out.push(`${t.id} escribe en ${p} (${why})`)
+  }
+  return out
+}
 
 /**
- * Comando de shell de solo lectura que el Maestro puede ejecutar sin preguntar durante una misión.
- * `git diff`/`git show` no entran: pueden ejecutar drivers externos (diff.external, textconv) del repositorio.
+ * Comando de shell de solo lectura que el Maestro ejecuta sin preguntar durante una misión: solo listar
+ * directorios del proyecto. git queda fuera (fsmonitor, textconv y diff.external ejecutan programas del
+ * repositorio) y también las rutas absolutas, UNC o de unidad (en Windows, una ruta UNC \\host\share filtra credenciales NTLM).
  */
 export function readOnlyShell(cmd: string): boolean {
   const c = cmd.trim()
   if (!c || c.length > 300 || /[;&|<>`$(){}\r\n'"]/.test(c)) return false
-  if (sensitiveCommand(c)) return false
-  const m = /^(git\s+(?:status|log|rev-parse|ls-files|remote\s+-v)|ls|dir|pwd|Get-ChildItem|Get-Location)(\s+.*)?$/i.exec(c)
+  const m = /^(ls|dir|pwd|Get-ChildItem|Get-Location)(\s+.*)?$/i.exec(c)
   if (!m) return false
   const args = (m[2] ?? '').trim().split(/\s+/).filter(Boolean)
-  if (/^git\s+log/i.test(m[1]) && args.some(a => /^(-p|-u|--patch|--format|--pretty)/i.test(a))) return false
-  return args.every(a => !a.startsWith('-') || SAFE_FLAGS.test(a))
+  const flag = (a: string) => /^(-a|-l|-la|-al|-R|-Force|-Recurse|-Name)$/i.test(a)
+  const relative = (a: string) => !/^([a-zA-Z]:|[\\/]|~)/.test(a) && !/(^|[\\/])\.\.([\\/]|$)/.test(a)
+  return args.every(a => (a.startsWith('-') ? flag(a) : relative(a)))
 }
+
+/** Flags que hacen que un intérprete o git ejecute código o configuración en línea (no permitidos en comprobaciones). */
+const INLINE_CODE = /^(-e|-p|-c|-C|-r|-x|-i|--eval|--print|--command|--require|--import|--loader|--experimental-loader|--exec-path|--git-dir|--work-tree|--config-env|--namespace|--upload-pack|--receive-pack)(=.*)?$/
 
 export const exeName = (argv0: string) =>
   argv0
@@ -268,6 +294,9 @@ function parseCheck(raw: unknown, i: number, limits: Limits, errs: string[]): Ch
   const exe = exeName(argv[0])
   if (/\.(cmd|bat|ps1|sh)$/.test(exe)) errs.push(`${w}.argv[0]: ${argv[0]} necesita un shell; declara el intérprete (por ejemplo node) y el script`)
   else if (!limits.allowedExecutables.includes(exe)) errs.push(`${w}.argv[0]: ejecutable no autorizado "${exe}" (permitidos: ${limits.allowedExecutables.join(', ')})`)
+  const inline = (argv as string[]).slice(1).find(a => INLINE_CODE.test(a))
+  if (inline) errs.push(`${w}.argv: "${inline}" ejecuta código o configuración en línea; declara un script del proyecto (quedará protegido)`)
+  if (exe === 'deno' && argv[1] === 'eval') errs.push(`${w}.argv: deno eval no está permitido`)
   const why = sensitiveCommand(argv.join(' '))
   if (why) errs.push(`${w}.argv: comando sensible (${why}); no puede ser una comprobación`)
   const cwdRaw = raw.cwd ?? '.'

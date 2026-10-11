@@ -47,6 +47,19 @@ describe('quest.json', () => {
     expect(JSON.parse(bad.files.get(F.quest)!).state).toBe('DISPATCH')
   })
 
+  test('un quest.json escrito por otro (más de una revisión por delante o distinto) no se cree: manda $.store', async () => {
+    const m = memIo()
+    const q1 = await saveQuest(m.io, approved())
+    m.files.set(F.quest, JSON.stringify({ ...q1, rev: 9, state: 'DONE' }))
+    m.files.delete(F.tmp)
+    const l = await loadQuest(m.io, ROOT)
+    expect(l.source).toBe('store')
+    expect(l.quest?.state).toBe('DISPATCH')
+    expect(l.problems.join()).toContain('posible manipulación')
+    m.files.set(F.quest, JSON.stringify({ ...q1, state: 'DONE' }))
+    expect((await loadQuest(m.io, ROOT)).problems.join()).toContain('posible manipulación')
+  })
+
   test('control optimista: un escritor con revisión antigua se rechaza', async () => {
     const m = memIo()
     const q0 = approved()
