@@ -19,7 +19,7 @@ El Maestro es la sesión principal. El Escriba no es un modelo: es el código de
 
 | Rol | Modelo impuesto | Esfuerzo | Herramientas permitidas (lista blanca en `src/policy.ts`) | Fase en que actúa |
 |---|---|---|---|---|
-| Maestro | el de la sesión | el de la sesión | Todas, filtradas por la política del §5 mientras la misión trabaja | Siempre |
+| Maestro | **`claude-sonnet-5-5` mientras la misión trabaja** (`maestroModel`; `inherit` = el de la sesión) | el de la sesión | Todas, filtradas por la política del §5 mientras la misión trabaja | Siempre |
 | Archimago | `claude-opus-5-5` | `high` (o `xhigh` por `userConfig`) | `Read`, `Grep`, `Glob` | `PLANNING` |
 | Artífice | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `Edit`, `Write`, `NotebookEdit`, `run_check` | `IMPLEMENTING` |
 | Paladín | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `run_check`, `submit_verdict` | `REVIEWING` |
@@ -95,7 +95,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
    - El hook `command.run` del mod va **delante** de la skill: crea la misión en `PLANNING`, abre el panel y deja pasar al prompt.
    - Si no puede crear la misión (petición vacía, otra misión trabajando), responde sin abrir turno.
    - Se invoca como `/quest` o `/guildflow:quest`.
-2. **El Maestro decide quién planifica** con una regla explícita de la skill:
+2. **El Maestro decide quién planifica**. El mod exige que un plan de **más de una subtarea** venga de un Archimago (Opus) terminado en la misión, así que la planificación difícil nunca queda en el Maestro (Sonnet). La regla de la skill:
    - Si es un cambio acotado, planifica él.
    - Si son varios módulos, más de 2 subtareas, arquitectura nueva, una petición sin forma de verificarse o recursos útiles, lanza al Archimago.
    - El Archimago recibe un **inventario de recursos** de la sesión, generado por el código (`$.tool.list`, `$.command.list`). El esquema del plan, con `resources` e `installs`, está en `agents/archimago.md`.
@@ -169,7 +169,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - **Contabilidad:** se registra cada petición en `turn.step`, con el desglose `input`, `output` y `cacheWrite` y su coste propio (`costDelta`). La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
 - **Interruptor de circuito:** cada 30 s y después de cada petición.
-- **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables` y `autoApprovePlan` (desactivado por defecto).
+- **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables`, `autoApprovePlan` (desactivado por defecto) y `trustedTools`, las herramientas de recursos que no impiden la aprobación automática; por defecto Context7 y `WebSearch`.
 
 ## 10. Comandos y UI
 

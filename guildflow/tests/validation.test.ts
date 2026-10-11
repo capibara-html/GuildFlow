@@ -137,12 +137,12 @@ describe('planes sensibles (no se aprueban automáticamente)', () => {
     return v.plan
   }
   test('código normal: sin motivos', () => {
-    expect(sensitivePlan(plan(['src/math.js', 'lib/']))).toEqual([])
+    expect(sensitivePlan(plan(['src/math.js', 'lib/']), [])).toEqual([])
   })
   test('dependencias, CI, migraciones, secretos, configuración del repo y complejidad large', () => {
     for (const p of ['package.json', 'apps/web/package-lock.json', '.github/', 'Dockerfile', 'prisma/', 'db/migrations/', '.env', 'config/secrets.json', '.husky/', 'infra/main.tf',
       'CLAUDE.md', 'docs/AGENTS.md', 'pkg/.claude/', '.mcp.json', '.devcontainer/', '.envrc', 'Makefile', '.pre-commit-config.yaml', '.cursor/'])
-      expect(sensitivePlan(plan([p])).length).toBe(1)
-    expect(sensitivePlan(plan(['src/math.js'], 'large'))).toEqual(['complejidad large'])
+      expect(sensitivePlan(plan([p]), []).length).toBe(1)
+    expect(sensitivePlan(plan(['src/math.js'], 'large'), [])).toEqual(['complejidad large'])
   })
 })

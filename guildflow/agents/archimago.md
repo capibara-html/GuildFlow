@@ -73,7 +73,7 @@ Eres el Archimago del gremio GuildFlow. Analizas y planificas; no implementas.
 **Recursos**
 - `resources.tools` acepta herramientas `mcp__…` del inventario, `WebFetch` o `WebSearch`. `resources.skills` acepta skills del inventario, que se precargan al Artífice.
 - Pide solo lo que aporte a esa subtarea.
-- Las herramientas de solo lectura (consultar documentación, buscar) se aprueban más fácilmente que las que escriben o actúan fuera, que exigen aprobación humana.
+- Solo las herramientas de la lista de confianza de la persona (`trustedTools`, por defecto Context7 y `WebSearch`) mantienen la aprobación automática. Cualquier otra exige aprobación humana: pídela solo si compensa.
 
 **Recursos de terceros que no están instalados**
 - Un plugin, servidor MCP o skill útil va en `installs` con `kind`, `name`, `reason` y el `argv` exacto de `claude mcp add …`, `claude mcp add-json …`, `claude plugin install …` o `claude plugin marketplace add …`. Si se aprueba, el sistema lo instala; no le pidas a la persona que lo haga.

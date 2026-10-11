@@ -33,7 +33,7 @@
 2. **Recursos declarados en el plan.**
    - Cada subtarea puede incluir `resources: { skills: [...], tools: ["mcp__context7__query-docs", ...] }`.
    - El mod amplía la lista blanca del Artífice **solo para esa subtarea** y solo tras la aprobación.
-   - Las herramientas de solo lectura (documentación, consulta) pueden aprobarse automáticamente.
+   - Las herramientas de la lista de confianza `trustedTools`, configurada por la persona (por defecto Context7 y `WebSearch`), pueden aprobarse automáticamente.
    - Las que escriben o tocan sistemas externos (`supabase__execute_sql`, `deploy`…) convierten el plan en sensible, así que la aprobación es humana.
    - El diálogo de aprobación muestra los recursos.
 3. **Recursos externos no instalados.**
@@ -193,8 +193,8 @@ Para estos referentes se toman **ideas, no código**. Reutilizar código requeri
 | § | Estado | Dónde |
 |---|---|---|
 | 1. Arranque nativo | **Implementado.** `skills/quest/SKILL.md` + hook `command.run` delante (crea la misión o responde sin abrir turno). En vivo: pendiente del benchmark (sesión A) | `register.tsx` `cmdQuest` |
-| 2. Recursos | **Implementado.** Catálogo en el brief del Archimago, `tasks[].resources` con variante registrada del Artífice (herramientas y skills precargadas), `plan.installs` (lo instala el sistema tras la aprobación; el software se indica a la persona) y comandos de instalación aprobados permitidos al Maestro | `catalog`, `artificeTypeFor`, `installSteps`, `policy.ts` |
-| 3. Tokens | **T2, T3 y T4 implementados.** Sin brief de vuelta al Maestro, informes compactos y desglose `input`/`output`/`cacheWrite`/`costDelta`. T1 y T5: decisión de la persona (modelo del Maestro, `AGENTS.md` de MAIA) | `register.tsx`, `machine.ts` `account` |
+| 2. Recursos | **Implementado.** Aprobación automática solo con herramientas de la lista de confianza `trustedTools`, no por heurística de nombre. Catálogo en el brief del Archimago, `tasks[].resources` con variante registrada del Artífice (herramientas y skills precargadas), `plan.installs` (lo instala el sistema tras la aprobación; el software se indica a la persona) y comandos de instalación aprobados permitidos al Maestro | `catalog`, `artificeTypeFor`, `installSteps`, `policy.ts` |
+| 3. Tokens | **T1–T4 implementados.** T1, por decisión de la persona: Maestro en Sonnet mientras la misión trabaja y Archimago obligatorio para planes de más de una subtarea (`maestroModel`). T2–T4: sin brief de vuelta al Maestro, informes compactos y desglose `input`/`output`/`cacheWrite`/`costDelta`. T5 (`AGENTS.md` de MAIA): ya no se carga | `register.tsx`, `machine.ts` `account` |
 | 4. Benchmark A/B | **Preparado:** `bench/README.md`, `bench/score.mjs`, 12 tests ocultos validados y clones en `Desktop/bench/`. Falta ejecutarlo (dos sesiones de la persona) | `bench/` |
 | 5. Petición sin indicaciones | **Implementado.** Regla de cuándo usar al Archimago en la skill, especificación ejecutable (dependencia obligatoria y `rebaseProtected` al terminar) | `SKILL.md`, `checkOverlaps`, `rebaseSpec` |
 | 6. Presupuesto de agentes | **Implementado.** `agentBudget` derivado del plan, techo 40 y tope 60, visible en el diálogo y en el estado | `machine.ts` |

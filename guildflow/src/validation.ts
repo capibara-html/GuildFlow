@@ -140,11 +140,11 @@ export function sensitivePath(rel: string): string | null {
 }
 
 /** Motivos por los que un plan necesita aprobación humana aunque autoApprovePlan esté activado ([] = ninguno). */
-export function sensitivePlan(plan: Plan): string[] {
+export function sensitivePlan(plan: Plan, trustedTools: readonly string[]): string[] {
   const out: string[] = []
   if (plan.complexity === 'large') out.push('complejidad large')
   for (const i of plan.installs) out.push(i.kind === 'software' ? `requiere descargar ${i.name}` : `instala ${i.kind} ${i.name}`)
-  for (const t of plan.tasks) for (const tool of t.resources.tools) if (!readOnlyTool(tool)) out.push(`${t.id} usa ${tool} (puede escribir o actuar fuera)`)
+  for (const t of plan.tasks) for (const tool of t.resources.tools) if (!trustedTools.includes(tool)) out.push(`${t.id} usa ${tool} (no está en trustedTools)`)
   for (const t of plan.tasks) for (const p of t.paths) {
     const why = sensitivePath(p)
     if (why) out.push(`${t.id} escribe en ${p} (${why})`)
@@ -217,6 +217,8 @@ const DEFAULTS: Record<string, number> = {
   maxTurnsPaladin: 25,
 }
 const DEFAULT_EXES = 'node,git,tsc,python,py,pytest,cargo,go,dotnet,deno,bun'
+/** Confianza explícita para la aprobación automática (la API no dice si una herramienta MCP es de solo lectura). WebFetch no: puede sacar datos en la URL. */
+const DEFAULT_TRUSTED = 'mcp__context7__resolve-library-id,mcp__context7__query-docs,WebSearch'
 
 /** Límites efectivos: los valores de userConfig acotados a los topes del plugin (no se pueden desactivar). */
 export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
@@ -228,6 +230,8 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     return k === 'costBudgetUsd' ? clamped : Math.floor(clamped)
   }
   const effort: Effort = options.archimagoEffort === 'xhigh' ? 'xhigh' : 'high'
+  // Sonnet coordina; la planificación de más de una subtarea la hace siempre el Archimago (Opus)
+  const maestroModel = options.maestroModel === 'inherit' ? null : 'claude-sonnet-5-5'
   const exes = String(options.allowedExecutables ?? DEFAULT_EXES)
     .split(',')
     .map(x => x.trim().toLowerCase())
@@ -248,6 +252,11 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     maxTurns: { archimago: n('maxTurnsArchimago'), artifice: n('maxTurnsArtifice'), paladin: n('maxTurnsPaladin') },
     archimagoEffort: effort,
     allowedExecutables: exes,
+    maestroModel,
+    trustedTools: String(options.trustedTools ?? DEFAULT_TRUSTED)
+      .split(',')
+      .map(x => x.trim())
+      .filter(x => RESOURCE_TOOL.test(x)),
   }
 }
 
@@ -412,15 +421,6 @@ function parseResources(raw: unknown, w: string, errs: string[]): Task['resource
   return { tools: [...new Set(tools)], skills: [...new Set(skills)] }
 }
 
-/**
- * Heurística (la API no expone si una herramienta MCP es de solo lectura): por el verbo de su nombre. Las de
- * solo lectura pueden aprobarse automáticamente; el resto hace sensible el plan.
- */
-export function readOnlyTool(name: string): boolean {
-  if (name === 'WebFetch' || name === 'WebSearch') return true
-  const verb = name.split('__').pop() ?? ''
-  return /^(get|list|read|search|query|fetch|find|describe|resolve|lookup|show|view|inspect|count|explain|preview)([_-]|$)/i.test(verb) || /(^|[_-])docs?([_-]|$)/i.test(verb)
-}
 
 const INSTALL_KINDS: readonly Install['kind'][] = ['plugin', 'mcp', 'skill', 'software']
 /** Subcomandos del CLI de Claude Code que instalan recursos (sin shell, argv exacto). */

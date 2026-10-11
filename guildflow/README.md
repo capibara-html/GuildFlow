@@ -54,6 +54,8 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `tokenBudgetPerQuest` · `costBudgetUsd` · `rateLimitPercent` · `wallClockMinutes` | 2M · 25 · 90 · 60 | El USD es equivalente a precio de API, no lo facturado |
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |
+| `maestroModel` | `claude-sonnet-5-5` | Modelo del Maestro mientras la misión trabaja. Todo plan de más de una subtarea lo traza el Archimago (Opus). `inherit` usa el modelo que tengas en la sesión |
+| `trustedTools` | Context7 + `WebSearch` | Herramientas de recursos que no impiden la aprobación automática |
 | `archimagoEffort` | `high` | `xhigh` para misiones arquitectónicas |
 | `allowedExecutables` | ver arriba | Lista separada por comas; nunca `.cmd`, `.bat`, `.ps1` ni `.sh` |
 

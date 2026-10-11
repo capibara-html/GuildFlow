@@ -5,7 +5,7 @@ import type { Quest } from '../types'
 import { agentBudget, agentFinished, agentSpawned, rebaseProtected, recordCheck, recordVerdict, startReview, startTask } from '../src/machine'
 import { decide, type Facts } from '../src/policy'
 import { approvalText } from '../src/presentation'
-import { checkOverlaps, readOnlyTool, sensitivePlan, validatePlan } from '../src/validation'
+import { checkOverlaps, sensitivePlan, validatePlan } from '../src/validation'
 import { agent, approved, LIMITS, ok, planned, RAW_PLAN, ROOT } from './fixtures'
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -78,12 +78,13 @@ describe('recursos por subtarea', () => {
     for (const t of ['Bash', 'Write', 'mcp__guildflow__quest', 'mcp__x', 'rm -rf'])
       expect(errorsOf(withResources([t])).join()).toContain('resources.tools')
   })
-  test('lectura (consulta de documentación) no hace sensible el plan; una herramienta que escribe sí', () => {
-    expect(readOnlyTool('mcp__context7__query-docs')).toBe(true)
-    expect(readOnlyTool('mcp__plugin_supabase_supabase__list_tables')).toBe(true)
-    expect(readOnlyTool('mcp__plugin_supabase_supabase__execute_sql')).toBe(false)
-    expect(sensitivePlan(valid(withResources(['mcp__context7__query-docs'])))).toEqual([])
-    expect(sensitivePlan(valid(withResources(['mcp__plugin_supabase_supabase__apply_migration']))).join()).toContain('apply_migration')
+  test('solo las herramientas de la lista de confianza mantienen la aprobación automática (nunca por el nombre)', () => {
+    const trusted = LIMITS.trustedTools
+    expect(trusted).toContain('mcp__context7__query-docs')
+    expect(trusted).not.toContain('WebFetch')
+    expect(sensitivePlan(valid(withResources(['mcp__context7__query-docs'])), trusted)).toEqual([])
+    for (const t of ['mcp__evil__get_and_delete', 'WebFetch', 'mcp__plugin_supabase_supabase__list_tables'])
+      expect(sensitivePlan(valid(withResources([t])), trusted).join()).toContain('no está en trustedTools')
   })
   test('el Artífice usa solo los recursos aprobados de SU subtarea; skills con nombre exacto', () => {
     let q = ok(startTask(approved(withResources(['mcp__context7__query-docs'], ['frontend-design'])), 't1', 3))
@@ -110,8 +111,8 @@ describe('instalaciones de terceros', () => {
   })
   test('cualquier instalación exige aprobación humana y se muestra en el diálogo', () => {
     const plan = valid(withInstalls([mcp, { kind: 'software', name: 'Godot', reason: 'motor', url: 'https://godotengine.org/download' }]))
-    expect(sensitivePlan(plan).join()).toContain('instala mcp context7')
-    expect(sensitivePlan(plan).join()).toContain('requiere descargar Godot')
+    expect(sensitivePlan(plan, LIMITS.trustedTools).join()).toContain('instala mcp context7')
+    expect(sensitivePlan(plan, LIMITS.trustedTools).join()).toContain('requiere descargar Godot')
     const t = approvalText('q-x', plan, LIMITS)!
     expect(t).toContain('INSTALAR mcp context7: claude mcp add context7')
     expect(t).toContain('DESCARGAR TÚ Godot')

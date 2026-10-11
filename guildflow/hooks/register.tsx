@@ -246,7 +246,7 @@ async function baselineFor($: $, q: Quest): Promise<Baseline> {
 async function askApproval($: $): Promise<string> {
   const q = QUEST
   if (!q || q.state !== 'AWAITING_APPROVAL' || !q.plan) return 'No hay un plan pendiente de aprobación.'
-  const sensitive = sensitivePlan(q.plan)
+  const sensitive = sensitivePlan(q.plan, q.limits.trustedTools ?? [])
   if (OPTIONS.autoApprovePlan === true && !sensitive.length) {
     const baseline = await baselineFor($, q)
     const o = await mutate($, (x, t) => M.approve(x, { by: 'auto', answer: 'autoApprovePlan', baseline }, t))
@@ -405,6 +405,9 @@ ${auto}`)
       }
       const v = validatePlan(plan, q.limits)
       if (!v.ok) return res({ ok: false, errors: v.errors })
+      // La planificación difícil nunca queda en el Maestro: más de una subtarea exige un plan del Archimago
+      if (v.plan.tasks.length > 1 && !q.agents.some(a => a.role === 'archimago' && a.status === 'done'))
+        return res({ ok: false, errors: [`un plan de ${v.plan.tasks.length} subtareas lo traza el Archimago: lanza Agent con subagent_type "${ROLES.archimago.type}" y envía su plan (puedes ajustarlo)`] })
       for (const k of v.plan.checks) k.protects = await autoProtects(io($), q.project, k)
       const ov = checkOverlaps(v.plan)
       if (ov.errors.length) return res({ ok: false, errors: ov.errors })
@@ -750,6 +753,12 @@ export const register: Register = (on, options) => {
           if (e.index === 0) await note($, 'turn.step.enforced', { agentId: e.agentId, role, seenModel: e.model, seenEffort: e.effort ?? null, model: rule.model, effort })
         }
       }
+    }
+    // Maestro: mientras la misión trabaja, coordina con el modelo configurado (Sonnet por defecto)
+    const maestro = q.limits.maestroModel
+    if (!e.agentId && maestro && M.isWorking(q) && e.model !== maestro) {
+      sent = { ...e, model: maestro }
+      if (e.index === 0) await note($, 'turn.step.enforced', { agentId: null, role: 'maestro', seenModel: e.model, model: maestro })
     }
     const r = yield* next(sent)
     // Con la misión detenida, terminada o esperando aprobación, lo que hace la sesión principal no es de la misión

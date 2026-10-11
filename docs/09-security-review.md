@@ -58,6 +58,7 @@
 | 6 | Revisión automática (`363832b`) | La aprobación automática no consideraba sensibles `CLAUDE.md`, `AGENTS.md`, `.claude/` anidados, `.mcp.json`, `.devcontainer`, `.envrc`, `Makefile` ni los hooks de pre-commit, que cambian lo que ejecutan otras herramientas o agentes | Media | Añadidos a `SENSITIVE_PATHS`; el Artífice tampoco los escribe dentro de un directorio concedido en misiones aprobadas automáticamente | Corregido (`e7b63a8`) |
 | 7 | Revisión automática (`363832b`) | Diferencia de interpretación en el shell de solo lectura: `Get-ChildItem Env:` (variables de entorno, posibles secretos), `HKLM:` o `x\\host\share` pasaban porque solo se miraba el prefijo | Media | Se rechaza cualquier argumento con `:`, `\` o `//` | Corregido (`e7b63a8`) |
 | 8 | Uso real | Exceso de diálogos (42 en una misión) que empujaba a aprobar sin leer | Usabilidad con efecto en la seguridad | Rechazo con explicación en lugar de preguntar; guarda del Maestro solo mientras la misión trabaja; ver `08` §5 | Corregido (`363832b`) |
+| 9 | Revisión automática (`87d9b44`) | La aprobación automática deducía "solo lectura" por el nombre de la herramienta MCP (`get_…`, `list_…`), lo que un servidor puede falsear. Además `WebFetch` puede sacar datos en la URL | Media | Lista de confianza explícita `trustedTools` (por defecto: Context7 y `WebSearch`). Cualquier otra herramienta de recursos hace sensible el plan | Corregido (pendiente de commit) |
 
 ## 5. Riesgos residuales (aceptados y documentados)
 

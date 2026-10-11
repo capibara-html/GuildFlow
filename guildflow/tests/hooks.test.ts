@@ -5,6 +5,7 @@ import type { Quest } from '../types'
 import { agentSpawned, startTask } from '../src/machine'
 import { files } from '../src/persistence'
 import { agent, approved, ok, planned, RAW_PLAN, ROOT } from './fixtures'
+import { limitsFrom } from '../src/validation'
 import { world } from './world'
 
 type R = { deny?: string; result?: unknown; text?: string }
@@ -294,5 +295,47 @@ describe('ajustes tras Pixel Chess', () => {
     expect(body).not.toContain('Rutas que PUEDES modificar')
     const spawned = await $.agent.spawn({ prompt: 'hazlo', subagentType: 'guildflow:artifice' } as never)
     expect(spawned.agentId).toBeDefined()
+  })
+})
+
+describe('Maestro en Sonnet y planificación del Archimago', () => {
+  const twoTasks = () => {
+    const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN & { tasks: Record<string, unknown>[] }
+    raw.tasks = [raw.tasks[0], { ...raw.tasks[0], id: 't2', paths: ['src/other.js'], dependsOn: ['t1'] }]
+    return raw
+  }
+  const planning = (q: Quest): Quest => ({ ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 })
+
+  test('un plan de más de una subtarea sin Archimago terminado se rechaza; con él, pasa', async ($, on) => {
+    const w = world(on, { quest: planning(planned()), answers: ['Aprobar'] })
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: twoTasks() })
+    expect(String(r.result)).toContain('lo traza el Archimago')
+    expect(w.asked.length).toBe(0)
+  })
+
+  test('con un Archimago terminado en la misión, el plan de varias subtareas se acepta', async ($, on) => {
+    const q = planning(planned())
+    q.agents.push({ ...agent('mago', 'archimago', null), status: 'done' })
+    const w = world(on, { quest: q, answers: ['Aprobar'] })
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: twoTasks() })
+    expect(String(r.result)).toContain('APROBADO')
+    expect(w.asked.length).toBe(1)
+  })
+
+  test('mientras la misión trabaja, las peticiones del Maestro salen con Sonnet', async ($, on) => {
+    const seen: string[] = []
+    world(on, { quest: implementing() })
+    on('turn.step', async function* (_$, e) {
+      seen.push(e.model)
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
+    })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'status' }) // carga la misión, como session.start en una sesión real
+    for await (const _ of $.turn.step({ turnId: 'tt', index: 0, model: 'claude-opus-5-5', messageCount: 1 } as never) as AsyncIterable<unknown>) void _
+    expect(seen).toEqual(['claude-sonnet-5-5'])
+  })
+
+  test('maestroModel inherit respeta el modelo de la sesión', () => {
+    expect(limitsFrom({}).maestroModel).toBe('claude-sonnet-5-5')
+    expect(limitsFrom({ maestroModel: 'inherit' }).maestroModel).toBeNull()
   })
 })
