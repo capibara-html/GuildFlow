@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { agentSpawned, recover, startTask } from '../src/machine'
-import { APPROVAL_MAX, approvalText, liveAgents, statusText } from '../src/presentation'
+import { agentSpawned, block, recover, startTask } from '../src/machine'
+import { APPROVAL_MAX, approvalText, liveAgents, stateLine, statusText } from '../src/presentation'
 import { agent, approved, LIMITS, ok, planned } from './fixtures'
 
 describe('diálogo de aprobación', () => {
@@ -28,6 +28,13 @@ describe('estado mostrado', () => {
     const s = statusText(q, 5)
     expect(s).toContain('Agentes activos: ninguno')
     expect(s).toContain('Agentes perdidos: artifice a')
+  })
+  test('línea de estado: dice si trabaja, si terminó o si necesita a la persona', () => {
+    let q = ok(startTask(approved(), 't1', 3))
+    expect(stateLine(q)).toContain('trabajando · Artífice en t1')
+    q = ok(block(q, 'el mismo fallo se repitió', 4))
+    expect(stateLine(q)).toContain('necesita tu decisión · el mismo fallo se repitió')
+    expect(stateLine({ ...q, state: 'LOGGED' })).toContain('completada')
   })
   test('el progreso sale de la evidencia, no de estimaciones', () => {
     expect(statusText(approved(), 5)).toContain('criterios 0/3')

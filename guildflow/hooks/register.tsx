@@ -8,7 +8,7 @@ import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { decide, OWN_TOOLS, pathArgs, protectedEntries, ROLES, roleOfType, TOOL, type Caller } from '../src/policy'
-import { APPROVAL_MAX, approvalText, band, pane, statusText, summaryMarkdown } from '../src/presentation'
+import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
 import { checkOverlaps, exactArgs, isCheckId, isTaskId, limitsFrom, normalizeAbs, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
 
@@ -52,9 +52,21 @@ async function rootOf($: $): Promise<string> {
   return r
 }
 
+let shownState: string | null | undefined // undefined = primera carga del módulo: no se avisa de lo ya sabido
+/** Actualiza la franja y el panel; la línea de estado y los avisos solo cuando cambia el estado. */
 async function setView($: $) {
   const snap = QUEST ? (JSON.parse(JSON.stringify(QUEST)) as Quest) : null
   await update($, viewA, () => snap)
+  const state = snap?.state ?? null
+  if (state === shownState) return
+  const first = shownState === undefined
+  shownState = state
+  $.ui.status(snap ? stateLine(snap) : undefined)
+  if (first || !snap) return
+  if (['DONE', 'BLOCKED', 'HALTED', 'PAUSED', 'AWAITING_APPROVAL'].includes(snap.state)) {
+    $.ui.toast(stateLine(snap), { timeoutMs: 10_000 })
+    void $.ui.notify(stateLine(snap), { title: 'GuildFlow' }).catch(() => undefined)
+  }
 }
 
 async function current($: $): Promise<Quest | null> {
@@ -103,7 +115,6 @@ async function commit($: $, o: M.Outcome): Promise<M.Outcome> {
         QUEST = await saveQuest(io($), h.quest, { force: true }).catch(() => h.quest)
         await setView($)
         await appendLog(io($), o.quest.project, h.log, { questId: o.quest.id, at }).catch(() => undefined)
-        $.ui.toast(`${PREFIX}: misión detenida por seguridad: quest.json cambió fuera del mod`)
       }
     }
     return { ok: false, error: `no se pudo guardar el estado: ${String(err)}` }
@@ -126,7 +137,6 @@ async function breaker($: $): Promise<string | null> {
   const why = M.limitBreach(q, await $.clock.now())
   if (!why) return null
   const o = await mutate($, (x, t) => M.halt(x, 'limit', `límite alcanzado: ${why}`, t))
-  if (o.ok) $.ui.toast(`${PREFIX}: misión detenida — ${why}`)
   return why
 }
 
@@ -302,10 +312,7 @@ async function finalize($: $) {
   const md = summaryMarkdown(q, runs, t)
   await $.fs.write(`${q.project}/.guildflow/summary-${q.id}.md`, md)
   const o = await mutate($, (x, now) => M.markLogged(x, now))
-  if (o.ok) {
-    $.ui.toast(`${PREFIX}: misión ${q.id} completada con evidencia positiva y registrada`)
-    await note($, 'quest.summary', { path: `.guildflow/summary-${q.id}.md` })
-  }
+  if (o.ok) await note($, 'quest.summary', { path: `.guildflow/summary-${q.id}.md` })
 }
 
 /** Continuación acotada: solo en una misión aprobada, solo si hubo progreso desde la última y nunca más que las iteraciones permitidas. */
@@ -427,7 +434,7 @@ async function cmdQuest($: $, args: string): Promise<string> {
   if (!request) return 'Uso: /quest <petición>. Abre una misión con planificación, aprobación humana, implementación, verificación y revisión.'
   if (request.length > 4000) return 'La petición supera 4000 caracteres.'
   const old = await current($)
-  if (M.isActive(old) && old.state !== 'HALTED') return `Ya hay una misión activa (${old.id}, ${old.state}). Termínala o usa /quest-halt antes de abrir otra.`
+  if (M.isActive(old) && !M.isStopped(old) && old.state !== 'DONE') return `Ya hay una misión trabajando (${old.id}, ${old.state}). Espera a que termine o usa /quest-halt antes de abrir otra.`
   const t = await $.clock.now()
   const root = await rootOf($)
   const created = await locked(async () => {
@@ -443,8 +450,9 @@ async function cmdQuest($: $, args: string): Promise<string> {
     text:
       `${PREFIX}: misión ${created.quest.id} creada. Petición original: "${request}". ` +
       'Sigue la skill guildflow (protocolo de misión): analiza objetivo, alcance, restricciones, riesgos y archivos afectados; si falta información esencial para definir criterios verificables, pregúntala; ' +
-      'planifica tú mismo si es sencilla o invoca a guildflow:archimago si es compleja; después envía el plan con mcp__guildflow__quest {"action":"submit_plan","plan":{...}}. La aprobación la pide el mod a la persona.',
+      'planifica tú mismo si es sencilla o invoca a guildflow:archimago si es compleja; después envía el plan con mcp__guildflow__quest {"action":"submit_plan","plan":{...}}. La aprobación la gestiona el mod.',
   })
+  await $.ui.open({ id: PANE, title: 'Gremio · GuildFlow' }).catch(() => undefined)
   return `Misión ${created.quest.id} creada (${created.quest.state}). El Maestro preparará el plan; ${OPTIONS.autoApprovePlan === true ? 'si no toca nada sensible se aprobará automáticamente, si no se pedirá en un diálogo' : 'la aprobación se pedirá en un diálogo'}.`
 }
 
@@ -649,6 +657,8 @@ export const register: Register = (on, options) => {
       }
     }
     const r = yield* next(sent)
+    // Con la misión detenida, terminada o esperando aprobación, lo que hace la sesión principal no es de la misión
+    if (!role && !M.isWorking(QUEST)) return r
     try {
       const u = r.usage
       const tokens = u ? (u.input_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) : 0
@@ -749,7 +759,7 @@ export const register: Register = (on, options) => {
   // ----- interfaz -----
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const q = await read($, viewA)
-    if (!q || q.state === 'LOGGED') return next(e)
+    if (!q) return next(e)
     return band($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop')
   })
 

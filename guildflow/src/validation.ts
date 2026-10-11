@@ -121,7 +121,8 @@ const SENSITIVE_PATHS: [RegExp, string][] = [
   [/(^|\/)(\.github|\.gitlab-ci\.yml|\.circleci|azure-pipelines\.yml|jenkinsfile|dockerfile|docker-compose[^/]*|compose\.ya?ml|[^/]+\.tf|k8s|helm|vercel\.json|netlify\.toml|fly\.toml|\.vercel)(\/|$)/i, 'CI o despliegue'],
   [/(^|\/)(migrations?|prisma|schema\.sql)(\/|$)/i, 'migraciones o esquema de datos'],
   [/(^|\/)(\.env[^/]*|secrets?|credentials?)(\/|$|\.)/i, 'secretos o entorno'],
-  [/(^|\/)(\.gitattributes|\.gitmodules|\.husky|\.githooks|\.vscode|\.idea)(\/|$)/i, 'configuración del repositorio o del editor'],
+  [/(^|\/)(\.gitattributes|\.gitmodules|\.husky|\.githooks|\.vscode|\.idea|\.devcontainer|\.envrc|\.pre-commit-config\.ya?ml|lefthook\.ya?ml|makefile|justfile|taskfile\.ya?ml)(\/|$)/i, 'configuración del repositorio, del editor o lanzadores'],
+  [/(^|\/)(\.claude|\.mcp\.json|claude(\.local)?\.md|agents\.md|\.cursor|\.cursorrules|copilot-instructions\.md)(\/|$)/i, 'configuración o instrucciones de agentes'],
 ]
 
 /** Motivo por el que escribir en una ruta relativa del proyecto es sensible, o null. */
@@ -153,7 +154,8 @@ export function readOnlyShell(cmd: string): boolean {
   if (!m) return false
   const args = (m[2] ?? '').trim().split(/\s+/).filter(Boolean)
   const flag = (a: string) => /^(-a|-l|-la|-al|-R|-Force|-Recurse|-Name)$/i.test(a)
-  const relative = (a: string) => !/^([a-zA-Z]:|[\\/]|~)/.test(a) && !/(^|[\\/])\.\.([\\/]|$)/.test(a)
+  // Sin ':' en ninguna parte (unidades, proveedores de PowerShell como Env: o HKLM:), sin '\' ni '//' (UNC) y sin '..'
+  const relative = (a: string) => !/[:\\]|\/\/|^[/~]/.test(a) && !/(^|\/)\.\.(\/|$)/.test(a)
   return args.every(a => (a.startsWith('-') ? flag(a) : relative(a)))
 }
 

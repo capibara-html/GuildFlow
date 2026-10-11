@@ -123,24 +123,23 @@ export async function loadQuest(io: Io, root: string): Promise<Loaded> {
     valid.push({ q, source })
   }
   if (!valid.length) return { quest: null, source: 'none', problems }
-  // $.store vive fuera del proyecto: el código del proyecto no lo escribe por accidente. Un archivo que va más
-  // de una revisión por delante (una escritura interrumpida solo deja una) o que difiere en la misma revisión
-  // no lo escribió este mod: se usa la copia de $.store y se avisa.
+  // $.store vive fuera del proyecto (el código del proyecto no lo escribe) y saveQuest lo escribe ANTES que el
+  // archivo: si existe, manda siempre. Una copia en disco distinta solo es legítima si va por detrás (escritura
+  // interrumpida de la misma misión, o archivo de una misión anterior); cualquier otra diferencia no la escribió
+  // este mod y se avisa como posible manipulación.
   const store = valid.find(v => v.source === 'store')
   const disk = valid.filter(v => v.source !== 'store').sort((a, b) => b.q.rev - a.q.rev)[0]
-  if (store && disk && disk.q.id === store.q.id) {
-    const ahead = disk.q.rev - store.q.rev
-    if (ahead > 1 || (ahead === 0 && JSON.stringify(disk.q) !== JSON.stringify(store.q))) {
-      problems.push(`posible manipulación: ${disk.source} (rev ${disk.q.rev}) no coincide con la copia del mod (rev ${store.q.rev})`)
-      return { quest: store.q, source: 'store', problems }
+  if (store) {
+    for (const d of valid.filter(v => v.source !== 'store')) {
+      if (JSON.stringify(d.q) === JSON.stringify(store.q)) continue
+      const behind = d.q.id === store.q.id ? d.q.rev < store.q.rev : d.q.createdAt < store.q.createdAt
+      if (!behind) problems.push(`posible manipulación: ${d.source} (${d.q.id} rev ${d.q.rev}) no coincide con la copia del mod (${store.q.id} rev ${store.q.rev})`)
     }
-    if (ahead < 0) return { quest: store.q, source: 'store', problems }
-    if (disk.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
-    return { quest: disk.q, source: disk.source, problems }
+    if (fileText !== null && valid.some(v => v.source === 'file' && JSON.stringify(v.q) === JSON.stringify(store.q))) lastText.set(root, hash(fileText))
+    return { quest: store.q, source: 'store', problems }
   }
-  const best = [disk, store].filter(v => v !== undefined).sort((a, b) => b!.q.rev - a!.q.rev)[0]!
-  if (best.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
-  return { quest: best.q, source: best.source, problems }
+  if (disk.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
+  return { quest: disk.q, source: disk.source, problems }
 }
 
 /** Una misión con aprobación cuyo plan ya no coincide con el hash aprobado ha sido alterada fuera del mod. */
@@ -165,9 +164,18 @@ export function saveQuest(io: Io, q: Quest, opts: { force?: boolean } = {}): Pro
     await io.write(f.tmp, text)
     const back = parse(await io.read(f.tmp))
     if (!back || back.rev !== next.rev) throw new Error('la copia temporal de quest.json no se pudo verificar')
-    await io.write(f.quest, text)
+    // Primero la copia de $.store (la que manda al cargar), después el archivo; si el archivo falla, se
+    // restaura la copia anterior para no dejar guardado un cambio que el llamante cree fallido.
+    const key = storeKey(q.project)
+    const prev = await io.storeGet(key)
+    await io.storeSet(key, next)
+    try {
+      await io.write(f.quest, text)
+    } catch (err) {
+      await io.storeSet(key, prev).catch(() => undefined)
+      throw err
+    }
     lastText.set(q.project, hash(text))
-    await io.storeSet(storeKey(q.project), next)
     return next
   })
 }

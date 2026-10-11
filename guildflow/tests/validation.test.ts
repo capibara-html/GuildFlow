@@ -101,7 +101,10 @@ describe('comandos y límites', () => {
     expect(sensitiveCommand('git status')).toBeNull()
   })
   test('shell de solo lectura del Maestro: listar el proyecto, nada más', () => {
-    for (const c of ['ls', 'ls -la src', 'dir src\\lib', 'pwd', 'Get-ChildItem -Recurse src']) expect(readOnlyShell(c)).toBe(true)
+    for (const c of ['ls', 'ls -la src', 'dir src/lib', 'pwd', 'Get-ChildItem -Recurse src']) expect(readOnlyShell(c)).toBe(true)
+    // proveedores de PowerShell, unidades y UNC en cualquier posición del argumento
+    for (const c of ['Get-ChildItem Env:', 'dir HKLM:', 'ls Cert::', 'dir src\\lib', 'ls a//host/x', 'ls x\\\\host\\share'])
+      expect(readOnlyShell(c)).toBe(false)
     // git (fsmonitor/textconv/diff.external ejecutan programas), flags con efectos, rutas UNC/absolutas/.. piden permiso
     for (const c of ['git status', 'git log --oneline', 'git diff --output=x.txt', 'ls --hide-control-chars=x', 'ls \\\\attacker\\share', 'dir //host/x', 'dir C:\\Users', 'ls /etc', 'ls ~', 'ls ../..', 'ls src/../..'])
       expect(readOnlyShell(c)).toBe(false)
@@ -137,7 +140,8 @@ describe('planes sensibles (no se aprueban automáticamente)', () => {
     expect(sensitivePlan(plan(['src/math.js', 'lib/']))).toEqual([])
   })
   test('dependencias, CI, migraciones, secretos, configuración del repo y complejidad large', () => {
-    for (const p of ['package.json', 'apps/web/package-lock.json', '.github/', 'Dockerfile', 'prisma/', 'db/migrations/', '.env', 'config/secrets.json', '.husky/', 'infra/main.tf'])
+    for (const p of ['package.json', 'apps/web/package-lock.json', '.github/', 'Dockerfile', 'prisma/', 'db/migrations/', '.env', 'config/secrets.json', '.husky/', 'infra/main.tf',
+      'CLAUDE.md', 'docs/AGENTS.md', 'pkg/.claude/', '.mcp.json', '.devcontainer/', '.envrc', 'Makefile', '.pre-commit-config.yaml', '.cursor/'])
       expect(sensitivePlan(plan([p])).length).toBe(1)
     expect(sensitivePlan(plan(['src/math.js'], 'large'))).toEqual(['complejidad large'])
   })

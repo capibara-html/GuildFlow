@@ -56,6 +56,29 @@ export function headline(q: Quest, now: number): string {
   return `GuildFlow ${q.id} · ${q.state} · criterios ${p.criteriaPassed}/${p.criteriaTotal} · subtareas ${p.tasksDone}/${p.tasksTotal} · ${fmtTokens(u.mainTokens + u.agentTokens)}/${fmtTokens(q.limits.tokenBudgetPerQuest)} tok${cost} · ${fmtDur(elapsedMs(q, now))}`
 }
 
+/** Qué está pasando, en una frase para la persona (línea de estado, avisos y franja). */
+export function stateLine(q: Quest): string {
+  const p = progressSummary(q)
+  const crit = `criterios ${p.criteriaPassed}/${p.criteriaTotal}`
+  const attempt = q.activeTask ? ` (intento ${q.progress[q.activeTask]?.attempts ?? 1})` : ''
+  const phrase: Record<string, string> = {
+    INTAKE: '⏳ trabajando · preparando la misión',
+    PLANNING: '⏳ trabajando · el Maestro planifica',
+    AWAITING_APPROVAL: '✋ esperando tu aprobación del plan',
+    DISPATCH: '⏳ trabajando · despachando la siguiente subtarea',
+    IMPLEMENTING: `⏳ trabajando · Artífice en ${q.activeTask ?? '?'}${attempt}`,
+    VERIFYING: '⏳ trabajando · el mod verifica',
+    REVIEWING: `⏳ trabajando · Paladín revisa ${q.activeTask ?? ''}`.trim(),
+    FIXING: `⏳ trabajando · corrigiendo ${q.activeTask ?? ''}`.trim(),
+    DONE: `✅ completada · ${crit}`,
+    LOGGED: `✅ completada · ${crit} · resumen en .guildflow/summary-${q.id}.md`,
+    PAUSED: '⏸ en pausa · /quest-resume para seguir',
+    HALTED: `⛔ detenida · ${q.reason ?? ''}`,
+    BLOCKED: `⚠ bloqueada, necesita tu decisión · ${q.reason ?? ''}`,
+  }
+  return `GuildFlow ${q.id} · ${phrase[q.state] ?? q.state}`.replace(/ · $/, '').slice(0, 300)
+}
+
 /** Texto completo del estado (comando /quest-status y herramienta quest status). */
 export function statusText(q: Quest, now: number): string {
   const lines = [headline(q, now), `Petición: ${q.request}`]
@@ -122,22 +145,22 @@ type El = Record<string, (props: Record<string, unknown>) => unknown>
 export function band(el: El, q: Quest, now: number, desktop: boolean) {
   const { Box, Text, Svg } = el as Record<string, any>
   const live = liveAgents(q)
+  const finished = q.state === 'LOGGED' || q.state === 'DONE'
   return (
     <Box flexDirection="column">
       <Box flexDirection="row" gap={1}>
         {desktop ? <Svg source={icon('maestro', 14)} alt="Mostrador del gremio" width={14} height={14} /> : <Text>{STATIONS.maestro.glyph}</Text>}
         <Text color={stateColor(q.state)} bold>
-          {q.state}
+          {stateLine(q).replace(`GuildFlow ${q.id} · `, '')}
         </Text>
-        <Text>{headline(q, now).replace(`GuildFlow ${q.id} · ${q.state} · `, `${q.id} · `)}</Text>
       </Box>
+      <Text dimColor>{`  ${headline(q, now).replace(`GuildFlow ${q.id} · ${q.state} · `, `${q.id} · `)}`}</Text>
       {live.map(a => (
         <Text key={a.id} color={STATIONS[a.role].color}>
           {`  ${agentLine(a, now)}`}
         </Text>
       ))}
-      {q.reason ? <Text color={stateColor(q.state)}>{`  ${q.reason}`}</Text> : null}
-      <Text dimColor>{`  siguiente: ${nextStep(q)}`}</Text>
+      {finished ? <Text dimColor>{'  /quest <petición> abre otra misión · /quest-status para el detalle'}</Text> : <Text dimColor>{`  siguiente: ${nextStep(q)}`}</Text>}
     </Box>
   )
 }

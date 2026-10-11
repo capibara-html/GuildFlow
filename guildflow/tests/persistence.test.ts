@@ -14,7 +14,8 @@ describe('quest.json', () => {
     expect(JSON.parse(m.files.get(F.quest)!).rev).toBe(1)
     expect((m.store.get(storeKey(ROOT)) as { rev: number }).rev).toBe(1)
     const l = await loadQuest(m.io, ROOT)
-    expect(l.source).toBe('file')
+    expect(l.source).toBe('store') // $.store manda; el archivo coincide, sin incidencias
+    expect(l.problems).toEqual([])
     expect(l.quest?.id).toBe('q-test')
   })
 
@@ -29,21 +30,42 @@ describe('quest.json', () => {
     expect(l.problems.join()).toContain('no es válido')
   })
 
-  test('escritura interrumpida: el temporal verificado más reciente gana', async () => {
+  test('escritura interrumpida (archivo por detrás de $.store): manda $.store y no es manipulación', async () => {
     const m = memIo()
     const q1 = await saveQuest(m.io, approved())
-    m.files.set(F.tmp, JSON.stringify({ ...q1, rev: 2 }))
-    expect((await loadQuest(m.io, ROOT)).quest?.rev).toBe(2)
+    m.store.set(storeKey(ROOT), { ...q1, rev: 2, state: 'IMPLEMENTING' })
+    const l = await loadQuest(m.io, ROOT)
+    expect(l.quest?.rev).toBe(2)
+    expect(l.problems).toEqual([])
   })
 
-  test('un error de escritura conserva el estado válido anterior', async () => {
+  test('un quest.json o temporal una sola revisión por delante tampoco se cree (lo escribe el mod después de $.store)', async () => {
+    for (const path of [F.quest, F.tmp]) {
+      const m = memIo()
+      const q1 = await saveQuest(m.io, approved())
+      m.files.set(path, JSON.stringify({ ...q1, rev: 2, state: 'DONE' }))
+      const l = await loadQuest(m.io, ROOT)
+      expect(l.quest?.state).toBe('DISPATCH')
+      expect(l.problems.join()).toContain('posible manipulación')
+    }
+  })
+
+  test('otra misión más reciente en disco que la de $.store se trata como manipulación', async () => {
+    const m = memIo()
+    const q1 = await saveQuest(m.io, approved())
+    m.files.set(F.quest, JSON.stringify({ ...q1, id: 'q-falsa', createdAt: q1.createdAt + 1 }))
+    expect((await loadQuest(m.io, ROOT)).problems.join()).toContain('posible manipulación')
+  })
+
+  test('un error de escritura conserva el estado válido anterior, también en $.store', async () => {
     const m = memIo()
     const q1 = await saveQuest(m.io, approved())
     const bad = memIo({}, undefined, { failWriteOn: /quest\.json$/ })
     for (const [k, v] of m.files) bad.files.set(k, v)
+    for (const [k, v] of m.store) bad.store.set(k, v)
     await expect(saveQuest(bad.io, { ...q1, state: 'HALTED' })).rejects.toThrow('EIO')
     const l = await loadQuest(bad.io, ROOT)
-    expect(l.quest?.rev).toBeGreaterThanOrEqual(1)
+    expect(l.quest?.state).toBe('DISPATCH')
     expect(JSON.parse(bad.files.get(F.quest)!).state).toBe('DISPATCH')
   })
 
