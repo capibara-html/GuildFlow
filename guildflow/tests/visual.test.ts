@@ -169,6 +169,25 @@ describe('integración: lanzamiento de una subtarea visual creativa', () => {
     expect(s.model).toBe('claude-opus-5-5')
   })
 
+  test('un plan nuevo con el mismo id de subtarea no reutiliza la variante anterior', { options: { autoApprovePlan: true } }, async ($, on) => {
+    const w = world(on, { quest: { ...approved(visualRaw()), state: 'PLANNING', plan: null, planHash: null, approval: null, rev: 1 } })
+    on('turn.start', ($, e) => ({ turnId: e.turnId }))
+    await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: visualRaw() } as never)
+    await $.turn.start({ turnId: 'n1', text: '' } as never)
+    await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'block', reason: 'replanificar' } as never)
+    const second = visualRaw()
+    second.tasks[0].model = 'sonnet'
+    const r = await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: second } as never)
+    expect(String((r as { result?: unknown }).result)).toContain('automáticamente')
+    expect(w.registered.filter(x => x.name === 'artifice-t1').map(x => x.model)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5'])
+    // recién re-registrada: en este turno se lanza el Artífice base, nunca la definición anterior
+    await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' } as never)
+    await $.agent.spawn({ prompt: 'x', subagentType: 'guildflow:artifice' } as never)
+    const s = w.spawned[0] as { model: string; subagentType: string }
+    expect(s.subagentType).toBe('guildflow:artifice')
+    expect(s.model).toBe('claude-sonnet-5-5')
+  })
+
   test('si el registro de la variante falla, se lanza el Artífice base (la guarda sigue aplicando lo aprobado)', async ($, on) => {
     const w = world(on, { quest: { ...approved(visualRaw()), rev: 2 }, registerFails: true })
     await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' } as never)

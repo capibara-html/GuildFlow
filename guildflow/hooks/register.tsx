@@ -9,7 +9,7 @@ import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
 import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
-import { checkOverlaps, exactArgs, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
+import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
 
 type Raw = Record<string, unknown>
@@ -28,7 +28,8 @@ let OPTIONS: Readonly<Record<string, unknown>> = {}
 let mainTurn: string | null = null
 /** Turnos de la sesión principal: un tipo registrado con $.agent.register solo se puede lanzar desde el turno siguiente. */
 let mainTurnSeq = 0
-const variantReady = new Map<string, number>()
+/** Variantes registradas: turno del registro y huella de la definición (misión, plan, herramientas, skills, modelo). */
+const variantReady = new Map<string, { seq: number; sig: string }>()
 
 const PREFIX = 'GuildFlow'
 const VERDICTS = ['PASS', 'FAIL', 'INCONCLUSIVE', 'NOT_RUN'] as const
@@ -509,23 +510,27 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
   const special = task.visual || (role === 'artifice' && (task.resources.tools.length > 0 || task.resources.skills.length > 0 || task.model !== 'sonnet'))
   if (!special) return ROLES[role].type
   const name = roleVariant(role, task.id)
-  // Registrada en un turno anterior: ya se puede lanzar (herramientas exactas y skills precargadas)
+  const spec = {
+    name,
+    description: `GuildFlow · ${role === 'artifice' ? 'Artífice' : 'Paladín'} de ${task.id}${task.visual ? ' (con navegador local)' : ''}. Solo lo lanza el mod.`,
+    prompt: role === 'artifice' ? ARTIFICE_SYSTEM : PALADIN_SYSTEM,
+    tools: [...toolsFor(q, role)],
+    skills: role === 'artifice' ? task.resources.skills : [],
+    model: modelFor(q, role, task.id),
+    effort: ROLES[role].effort,
+    maxTurns: q.limits.maxTurns[role] + (task.visual ? 20 : 0),
+  }
+  // La huella liga la variante a ESTA misión y ESTE plan aprobado: otra misión u otro plan con el mismo id de
+  // subtarea re-registra y no se usa hasta el turno siguiente (nunca una definición de antes)
+  const sig = hash(`${q.id}|${q.planHash ?? ''}|${JSON.stringify(spec)}`)
   const at = variantReady.get(name)
-  if (at !== undefined && at < mainTurnSeq) return `${PLUGIN}:${name}`
-  if (at === undefined) {
+  if (at && at.sig === sig && at.seq < mainTurnSeq) return `${PLUGIN}:${name}`
+  if (!at || at.sig !== sig) {
     try {
-      await $.agent.register({
-        name,
-        description: `GuildFlow · ${role === 'artifice' ? 'Artífice' : 'Paladín'} de ${task.id}${task.visual ? ' (con navegador local)' : ''}. Solo lo lanza el mod.`,
-        prompt: role === 'artifice' ? ARTIFICE_SYSTEM : PALADIN_SYSTEM,
-        tools: [...toolsFor(q, role)],
-        skills: role === 'artifice' ? task.resources.skills : [],
-        model: modelFor(q, role, task.id),
-        effort: ROLES[role].effort,
-        maxTurns: q.limits.maxTurns[role] + (task.visual ? 20 : 0),
-      })
-      variantReady.set(name, mainTurnSeq)
+      await $.agent.register(spec)
+      variantReady.set(name, { seq: mainTurnSeq, sig })
     } catch (err) {
+      variantReady.delete(name)
       await note($, 'agent.variant.failed', { role, taskId: task.id, error: String(err).slice(0, 300) })
     }
   }
