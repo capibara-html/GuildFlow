@@ -1,13 +1,13 @@
 # 05 — Hoja de ruta del MVP
 
-**Fecha:** 2026-10-10 · **Estado:** Fase 1 completada · Fase 2 implementada, con dos pruebas en vivo pendientes · actualizado 2026-10-11
+**Fecha:** 2026-10-10 · **Estado:** Fase 1 completada · Fase 2 completada · actualizado 2026-10-11
 
 ## Estado a 2026-10-11
 
 | Fase | Estado | Referencia |
 |---|---|---|
 | 1. PoC | **Completada.** 7 PASS y 1 INCONCLUSIVE (P8, `permissionMode`, que se descarta como control) | `06`, `07` |
-| 2. Núcleo del gremio | **Implementada.** 125 pruebas automáticas; misión de éxito y misión de fallo en vivo PASS. **Pendiente:** reinicio de Desktop en vivo y una misión de 2-3 subtareas | `08`, `09`, `10` |
+| 2. Núcleo del gremio | **Completada.** 125 pruebas automáticas. En vivo: misión de 3 subtareas con dependencias → `LOGGED`, misión de fallo → `BLOCKED`, recuperación tras reinicio de la sesión → `PAUSED` sin relanzar nada. Opcional: reinicio con un agente en curso | `08`, `09`, `10` |
 | 3. Tablón pixel art | No iniciada | §1 |
 | 4. Endurecimiento | No iniciada | §1 |
 
@@ -62,7 +62,7 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 - Créditos y licencias en `ASSETS.md`.
 
 **Antes de la Fase 3** (recomendado tras la Fase 2):
-- Cerrar V16 (reinicio de Desktop) y V17 (misión de 2-3 subtareas con dependencias) de `10-test-results.md`.
+- Opcional: V16b de `10-test-results.md` (reinicio con un Artífice en curso).
 - Hacer una misión real en un repositorio propio, no en el testbed, para medir el coste y los diálogos en un caso de uso real.
 
 **Para el tablón:**

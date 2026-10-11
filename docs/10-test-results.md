@@ -50,8 +50,9 @@ Evidencia en `testbed/.guildflow/`: `log.jsonl`, `runs/`, `quests/` y `summary-*
 | V13 | Línea de estado y franja visibles | **PASS** | Confirmado por la persona usuaria: "⚠ bloqueada, necesita tu decisión…" |
 | V14 | Aviso o notificación al terminar o bloquearse | **NOT RUN** en vivo | Implementado después de V2 y V3 |
 | V15 | Ruta protegida: el Artífice intenta editar su test | **NOT RUN** en vivo | El Artífice no lo intentó. Cubierto por `policy.test.ts` y `hooks.test.ts`, y en vivo por la PoC (P3) |
-| V16 | **Reinicio completo de Desktop** con una misión a medias | **NOT RUN** | Pendiente: requiere que la persona usuaria cierre y vuelva a abrir Desktop. Probado en la PoC (P6) y por `machine.test.ts` |
-| V17 | Misión de 2-3 subtareas (criterio de fin de la hoja de ruta) | **NOT RUN** | Solo se han ejecutado misiones de una subtarea |
+| V16a | **Reinicio de la sesión de Desktop** con una misión abierta, sin agentes en curso | **PASS** | `q-20261011-181054` en `PLANNING` → `session.start {restarted:true, source:"store"}` → `PAUSED` "sesión reiniciada…", sin ningún relanzamiento automático → `/quest-resume` (humano) → `PLANNING`, y la misión terminó en `LOGGED` (log, 18:11:47–18:12:15) |
+| V16b | Reinicio **con un Artífice en curso** (agente marcado `lost`, intento devuelto) | **NOT RUN** en vivo | Cada Artífice duró unos 11 s y no coincidió con un reinicio. Cubierto por `machine.test.ts` ("reinicio: agentes en curso → lost, sin consumir intento") y en vivo por la PoC (P6, fila sintética) |
+| V17 | **Misión de 3 subtareas con dependencias** `q-20261011-181054` (t1 `slugify`, t2 `titleCase`, t3 `headline` ← t1, t2) | **PASS** | Aprobación automática; 3 Artífices y 3 Paladines en serie; 9/9 criterios con evidencia (`run-…-slug`, `-title`, `-headline`: 2 tests cada uno; `diff-scope` por subtarea); `summary-q-20261011-181054.md`; 3m43s activos, ≈$1,36; **0 diálogos**. Los 6 tests vuelven a pasar fuera del mod (`node --test`) |
 | V18 | Archimago (planificación delegada) | **NOT RUN** en vivo | Ambas misiones eran sencillas y las planificó el Maestro |
 | V19 | `/quest-halt` durante un turno | **NOT RUN** en vivo | Prueba automática en `machine.test.ts` |
 
@@ -60,11 +61,14 @@ Evidencia en `testbed/.guildflow/`: `log.jsonl`, `runs/`, `quests/` y `summary-*
 | Misión | Tokens (principal + subagentes) | USD equivalente | Nota |
 |---|---|---|---|
 | `q-20261011-172458` (éxito) | 10k + 31k | ≈ 0,45 | Además, 1,51 M de lecturas de caché, que no cuentan contra el presupuesto |
+| `q-20261011-181054` (3 subtareas) | 30k + 70k | ≈ 1,36 | 6 agentes; 4,99 M de lecturas de caché |
 | `q-20261011-174017` (fallo) | 18k + 21k al bloquearse | ≈ 0,61 | El contador siguió sumando trabajo de desarrollo mientras estaba bloqueada; corregido en `e7b63a8` |
 | `q-20261011-025758` (detenida) | 1,26 M | ≈ 18 | Inflada por el mismo error de contabilidad y por el contexto de unos 500 k de la sesión de desarrollo |
 
-## 5. Pendiente para cerrar la Fase 2
+**Hallazgo de V17:** el Paladín de t3 señaló que `diff-scope` informaba de "30 líneas" para un archivo de 7. La cifra era correcta, pero era la de **toda la misión** (11 → 22 → 30 acumuladas, coherente con un límite `maxDiffLines` por misión), y el mensaje la presentaba como de la subtarea. Se corrigió la redacción del mensaje; la lógica no cambia.
 
-1. V16, reinicio de Desktop: es el único requisito de persistencia sin prueba en vivo en esta fase.
-2. V17, misión de 2-3 subtareas con dependencias, para cubrir el criterio de fin de la hoja de ruta.
-3. Opcionales: V7, V14, V15, V18, V19 en vivo.
+## 5. Pendiente
+
+La Fase 2 cumple su criterio de fin: la misión de varias subtareas llega a `DONE` y la misión de fallo se detiene por el límite correcto (`BLOCKED`).
+
+Queda opcional en vivo: V16b (reinicio con un agente en curso), V7, V14, V15, V18 y V19.

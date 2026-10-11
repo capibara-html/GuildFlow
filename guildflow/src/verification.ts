@@ -219,7 +219,7 @@ export async function diffScope(io: Io, q: Quest): Promise<Scope> {
   if (outOfScope.length) problems.push(`fuera de alcance: ${outOfScope.join(', ')}`)
   if (!touched.length) problems.push(`la subtarea ${task.id} no modificó ninguna de sus rutas`)
   if (list.length > q.limits.maxFilesChanged) problems.push(`${list.length} archivos (> ${q.limits.maxFilesChanged})`)
-  if (diffLines !== null && diffLines > q.limits.maxDiffLines) problems.push(`${diffLines} líneas de diff (> ${q.limits.maxDiffLines})`)
-  const reason = problems.length ? problems.join('; ') : `alcance correcto: ${touched.join(', ')}; ${diffLines ?? '?'} líneas${gitNote}`
+  if (diffLines !== null && diffLines > q.limits.maxDiffLines) problems.push(`${diffLines} líneas de diff en la misión (> ${q.limits.maxDiffLines})`)
+  const reason = problems.length ? problems.join('; ') : `alcance correcto: ${touched.join(', ')}; ${diffLines ?? '?'} líneas de diff en toda la misión${gitNote}`
   return { pass: problems.length === 0, reason: `${reason}${problems.length ? gitNote : ''}`, outOfScope, touched, diffLines, files: list.length }
 }
