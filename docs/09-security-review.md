@@ -71,8 +71,9 @@
    - Hoy la opción está activada en `~/.claude/settings.json` de esta máquina, a petición de la persona usuaria.
 5. **Inyección de prompt** desde el contenido del repositorio. Los briefs la declaran como dato, pero un modelo puede ser influido. El daño posible queda acotado por las guardas anteriores, no por el modelo.
 6. **El tachado de secretos** reconoce solo patrones conocidos. Un secreto con otro formato puede quedar en `runs/*.json`. `.guildflow/` debe estar en `.gitignore`, como en el testbed.
-7. **El Maestro puede escribir fuera del proyecto con aprobación humana** (`5-write` → diálogo). Es intencionado: está en la lista de acciones sensibles.
-8. **API de mods en acceso anticipado.** Un cambio del motor puede alterar la semántica de los eventos. Versión mínima probada: 2.1.295.
+7. **Navegador de las subtareas visuales:** la guarda comprueba las URL que se piden (`navigate`, `preview_start`, lotes) y prohíbe JavaScript y formularios. Pero un clic (`computer`) sobre un enlace de la propia página podría llevar a un sitio externo. El riesgo es bajo, porque la página es la del proyecto y no se pueden teclear datos en formularios, y está aceptado.
+8. **El Maestro puede escribir fuera del proyecto con aprobación humana** (`5-write` → diálogo). Es intencionado: está en la lista de acciones sensibles.
+9. **API de mods en acceso anticipado.** Un cambio del motor puede alterar la semántica de los eventos. Versión mínima probada: 2.1.295.
 
 ## 6. Conclusión
 

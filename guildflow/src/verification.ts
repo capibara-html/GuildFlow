@@ -192,6 +192,7 @@ export async function diffScope(io: Io, q: Quest): Promise<Scope> {
         const abs = normalizeAbs(rel, gitRoot)
         if (!abs || !inside(abs, root)) continue
         if (inside(abs, `${root}/.guildflow`)) continue
+        if (abs === `${root}/.claude/launch.json`) continue // la escribe el mod para el navegador de las subtareas visuales (los agentes no pueden)
         changed.add(abs)
         if (code === '??') untracked.add(abs)
       }

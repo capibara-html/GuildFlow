@@ -32,7 +32,7 @@ export type CheckDef = {
   protects: string[]
 }
 
-/** check: 'review' (Paladín), 'diff-scope' (mod) o 'check:<id>' (run_check). */
+/** check: 'review' (Paladín leyendo), 'visual' (Paladín mirando el resultado en el navegador), 'diff-scope' (mod) o 'check:<id>' (run_check). */
 export type Criterion = { id: string; text: string; check: string }
 
 export type Task = {
@@ -49,7 +49,14 @@ export type Task = {
   isolation: 'none'
   /** Herramientas MCP o web y skills que el Artífice puede usar en ESTA subtarea, además de las de su rol. */
   resources: { tools: string[]; skills: string[] }
+  /** Subtarea de interfaz o arte: Artífice y Paladín ven el resultado en el navegador (solo localhost). */
+  visual: boolean
+  /** Modelo del Artífice de esta subtarea: sonnet (por defecto) u opus para trabajo creativo o de diseño. */
+  model: 'sonnet' | 'opus'
 }
+
+/** Servidor local para ver la interfaz (lo arranca el navegador integrado con su launch.json). */
+export type Preview = { argv: string[]; port: number }
 
 /**
  * Recurso de terceros propuesto por el plan. plugin/mcp/skill: lo instala el sistema tras la aprobación humana,
@@ -66,6 +73,7 @@ export type Plan = {
   checks: CheckDef[]
   tasks: Task[]
   installs: Install[]
+  preview: Preview | null
 }
 
 export type Evidence = {
@@ -107,6 +115,8 @@ export type AgentRecord = {
   endedAt: number | null
   partial: boolean
   lastTool: string | null
+  /** Capturas del resultado que hizo en el navegador (un criterio visual exige al menos una). */
+  looks?: number
 }
 
 export type Usage = {

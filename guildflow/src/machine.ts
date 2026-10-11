@@ -428,8 +428,11 @@ export function recordVerdict(q: Quest, a: { agentId: string; criterionId: strin
     const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
     const cr = task.criteria.find(x => x.id === a.criterionId)
     if (!cr) throw new Error(`criterio desconocido: ${a.criterionId}`)
-    if (cr.check !== 'review') throw new Error(`el criterio ${cr.id} se certifica con ${cr.check}, no con la revisión`)
-    if ((a.verdict === 'PASS' || a.verdict === 'FAIL') && !REF.test(a.evidence)) throw new Error('PASS/FAIL exige evidencia con archivo:línea o un runId')
+    if (cr.check !== 'review' && cr.check !== 'visual') throw new Error(`el criterio ${cr.id} se certifica con ${cr.check}, no con la revisión`)
+    const decisive = a.verdict === 'PASS' || a.verdict === 'FAIL'
+    if (cr.check === 'visual' && decisive && !(rec.looks ?? 0)) throw new Error('un criterio visual exige mirar: haz al menos una captura del resultado en el navegador antes de juzgar')
+    if (cr.check === 'visual' && decisive && a.evidence.trim().length < 30) throw new Error('describe lo que viste en la captura (qué pantalla, qué tamaño, qué cumple o falla)')
+    if (cr.check === 'review' && decisive && !REF.test(a.evidence)) throw new Error('PASS/FAIL exige evidencia con archivo:línea o un runId')
     const p = c.progress[task.id]
     p.evidence[cr.id] = { verdict: a.verdict, source: 'paladin', detail: a.evidence.slice(0, 2000), runId: null, round: p.round, at: now }
     c.progressMark += 1
@@ -578,6 +581,16 @@ export function rebaseProtected(q: Quest, taskId: string, hashes: Record<string,
     if (!c.baseline) throw new Error('sin línea base')
     c.baseline = { ...c.baseline, protectedHashes: { ...c.baseline.protectedHashes, ...hashes } }
     log.push({ ev: 'baseline.protects.updated', data: { taskId, paths: Object.keys(hashes) } })
+  })
+}
+
+/** Un agente hizo una captura del resultado en el navegador (habilita sus veredictos visuales). */
+export function noteLook(q: Quest, agentId: string, now: number): Outcome {
+  return op(q, now, (c, log) => {
+    const rec = c.agents.find(a => a.id === agentId)
+    if (!rec) throw new Error(`agente desconocido: ${agentId}`)
+    rec.looks = (rec.looks ?? 0) + 1
+    if (rec.looks === 1) log.push({ ev: 'agent.looked', data: { agentId, role: rec.role, taskId: rec.taskId } })
   })
 }
 

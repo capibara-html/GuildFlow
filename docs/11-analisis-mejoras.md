@@ -203,6 +203,19 @@ Para estos referentes se toman **ideas, no código**. Reutilizar código requeri
 
 Además se corrigió el falso positivo del `Glob` con patrón absoluto dentro del proyecto.
 
+## 11. Calidad visual (tras el benchmark A/B)
+
+**Causa:** en A nadie vio la interfaz. Los criterios visuales eran una lista que se verificaba leyendo código. La interfaz y el arte los hizo Sonnet con pocas peticiones y en subtareas separadas. B (Opus, una sola sesión) usó el navegador 25 veces y corrigió lo que vio.
+
+**Implementado:**
+- subtareas `visual` con navegador solo local para el Artífice y el Paladín;
+- criterios `visual` que exigen capturas;
+- `preview` del plan convertido en `launch.json`;
+- `model: "opus"` por subtarea;
+- reglas del Archimago para lo visual: skill de diseño y subtarea final de pulido.
+
+**Pendiente:** repetir la sesión A sobre un clon limpio y comparar con B.
+
 ## Fuentes
 
 - Comandos y estructura de plugins de Claude Code: <https://code.claude.com/docs/en/plugins/manifest-reference>, <https://code.claude.com/docs/en/agent-sdk/plugins>, <https://code.claude.com/docs/en/skills>

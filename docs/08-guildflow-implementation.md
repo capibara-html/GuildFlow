@@ -24,7 +24,13 @@ El Maestro es la sesión principal. El Escriba no es un modelo: es el código de
 | Artífice | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `Edit`, `Write`, `NotebookEdit`, `run_check` | `IMPLEMENTING` |
 | Paladín | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `run_check`, `submit_verdict` | `REVIEWING` |
 
-Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `resources` (herramientas MCP o web y skills aprobadas en el plan) se lanza como **variante** `guildflow:artifice-<subtarea>`: el mod la registra con `$.agent.register`, con esas herramientas añadidas y las skills precargadas, y reescribe el tipo en `agent.spawn`. Así el motor solo le ofrece lo aprobado. El modelo se impone en `agent.spawn`. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
+Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `resources` (herramientas MCP o web y skills aprobadas en el plan) se lanza como **variante** `guildflow:artifice-<subtarea>`: el mod la registra con `$.agent.register`, con esas herramientas añadidas y las skills precargadas, y reescribe el tipo en `agent.spawn`. Así el motor solo le ofrece lo aprobado. El modelo se impone en `agent.spawn`.
+
+**Subtareas visuales** (`visual: true`, tras el benchmark A/B: la versión hecha a ciegas quedó peor estéticamente que la de una sesión que miraba su resultado):
+- Su Artífice y su Paladín se lanzan como variantes con las herramientas del navegador integrado (`VISUAL_TOOLS`: vista previa, navegar, capturas, leer la página; sin `javascript_tool` ni formularios). Toda URL, también dentro de los lotes, debe ser de la máquina local (`browserProblem`).
+- El mod escribe `.claude/launch.json` con el servidor `preview` del plan.
+- Los criterios `visual` solo admiten veredicto si el Paladín hizo capturas en esa revisión (`noteLook`, contadas por el mod en `tool.call`) y describe lo que vio.
+- Una subtarea puede pedir `model: "opus"` para el trabajo creativo, y el Archimago cierra el trabajo visual con una subtarea de pulido. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
 
 ## 3. Módulos
 

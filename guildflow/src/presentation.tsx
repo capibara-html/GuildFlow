@@ -200,16 +200,18 @@ export function approvalText(id: string, plan: Plan, limits: Limits): string | n
   const tasks = plan.tasks
     .map(t => {
       const r = [...t.resources.tools, ...t.resources.skills.map(x => `skill ${x}`)]
-      return `${t.id} escribe en [${t.paths.join(', ')}]${r.length ? ` usando ${r.join(', ')}` : ''}`
+      const tags = [t.visual ? 'visual: con navegador local' : '', t.model === 'opus' ? 'Artífice Opus' : ''].filter(Boolean)
+      return `${t.id}${tags.length ? ` (${tags.join(', ')})` : ''} escribe en [${t.paths.join(', ')}]${r.length ? ` usando ${r.join(', ')}` : ''}`
     })
     .join('; ')
   const checks = plan.checks.map(k => `${k.id} = ${JSON.stringify(k.argv)} en ${k.cwd} (protege ${k.protects.join(', ') || '—'})`).join('; ') || 'ninguna'
   const installs = plan.installs.length
     ? ` — Recursos de terceros: ${plan.installs.map(i => (i.kind === 'software' ? `DESCARGAR TÚ ${i.name} (${i.url})` : `INSTALAR ${i.kind} ${i.name}: ${i.argv.join(' ')}`)).join('; ')}`
     : ''
+  const preview = plan.preview ? ` — Vista previa: ${JSON.stringify(plan.preview.argv)} en el puerto ${plan.preview.port}` : ''
   const agents = Math.min(limits.maxAgentsPerQuest, plan.tasks.reduce((n, t) => n + Math.min(t.maxAttempts, limits.maxAttemptsPerTask) * 2, 0))
   const text =
-    `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs} — ` +
+    `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs}${preview} — ` +
     `Límites: hasta ${agents} agentes, ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min. ¿Apruebas el plan?`
   return text.length > APPROVAL_MAX ? null : text
 }

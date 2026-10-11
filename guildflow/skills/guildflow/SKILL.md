@@ -40,6 +40,14 @@ Todo lo demás lo encadenas tú, **en el mismo turno**, hasta terminar la misió
    - quedan congelados.
 
    Las subtareas que los usan dependen de ella. Nunca planifiques solo con `review` si se puede escribir un test.
+
+   **Lo visual se mira.** Si hay interfaz, arte o animación, el plan necesita:
+   - subtareas `visual` con criterios `visual`;
+   - un servidor `preview`;
+   - `model: "opus"` en el diseño;
+   - una subtarea final de pulido visual.
+
+   Los tests no bastan para la estética.
 4. **Enviar el plan.** `submit_plan`. El mod valida rutas, comprobaciones, dependencias y recursos, y después:
    - con `autoApprovePlan`, aprueba solo los planes no sensibles y sigues sin preguntar;
    - si no, abre el diálogo a la persona.

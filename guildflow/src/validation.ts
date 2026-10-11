@@ -1,6 +1,6 @@
 // Validación de entradas no confiables (plan del modelo, argumentos de herramientas, rutas) y utilidades puras.
 // Todo lo que no se puede demostrar válido se rechaza.
-import type { CheckDef, Criterion, Effort, Install, Limits, Plan, Task } from '../types'
+import type { CheckDef, Criterion, Effort, Install, Limits, Plan, Preview, Task } from '../types'
 
 /** Hash no criptográfico (2×FNV-1a 32): detecta cambios accidentales, no adversarios. */
 export function hash(s: string): string {
@@ -351,7 +351,11 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
     errs.push(`${w}: debe ser un objeto`)
     return null
   }
-  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation', 'resources'], errs, w)
+  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation', 'resources', 'visual', 'model'], errs, w)
+  const visual = raw.visual ?? false
+  if (typeof visual !== 'boolean') errs.push(`${w}.visual: true | false`)
+  const model = raw.model ?? 'sonnet'
+  if (model !== 'sonnet' && model !== 'opus') errs.push(`${w}.model: sonnet | opus`)
   const id = typeof raw.id === 'string' && ID.test(raw.id) ? raw.id : null
   if (!id) errs.push(`${w}.id: identificador [a-z][a-z0-9_-]`)
   else if (seen.includes(id)) errs.push(`${w}.id: duplicado "${id}"`)
@@ -381,11 +385,12 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
       else if (criteria.some(x => x.id === cid)) errs.push(`${cw}.id: duplicado "${cid}"`)
       const text = str(c, 'text', 500, errs, cw)
       const check = c.check
-      const ok = check === 'review' || (typeof check === 'string' && check.startsWith('check:') && checks.some(k => `check:${k.id}` === check))
-      if (!ok) errs.push(`${cw}.check: "review" o "check:<id declarado>"; un criterio sin método verificable impide aprobar`)
+      const ok = check === 'review' || (check === 'visual' && visual === true) || (typeof check === 'string' && check.startsWith('check:') && checks.some(k => `check:${k.id}` === check))
+      if (!ok) errs.push(`${cw}.check: "review", "visual" (solo en subtareas visual) o "check:<id declarado>"; un criterio sin método verificable impide aprobar`)
       if (cid && ok) criteria.push({ id: cid, text, check: check as string })
     })
-  if (Array.isArray(rawCrit) && !criteria.some(c => c.check === 'review')) errs.push(`${w}.criteria: hace falta al menos un criterio "review" (revisión independiente del Paladín)`)
+  if (Array.isArray(rawCrit) && !criteria.some(c => c.check === 'review' || c.check === 'visual')) errs.push(`${w}.criteria: hace falta al menos un criterio "review" o "visual" (revisión independiente del Paladín)`)
+  if (visual === true && Array.isArray(rawCrit) && !criteria.some(c => c.check === 'visual')) errs.push(`${w}.criteria: una subtarea visual necesita al menos un criterio "visual" (el Paladín juzga lo que ve, no solo el código)`)
   const task: Task = {
     id: id ?? 'invalid',
     title: str(raw, 'title', 120, errs, w),
@@ -398,9 +403,37 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
     doneWhen: str(raw, 'doneWhen', 500, errs, w),
     isolation: 'none',
     resources: parseResources(raw.resources, w, errs),
+    visual: visual === true,
+    model: model === 'opus' ? 'opus' : 'sonnet',
   }
   if (id) seen.push(id)
   return task
+}
+
+/** Servidor local de la interfaz: mismas reglas que una comprobación (sin shell, ejecutable permitido, nada sensible). */
+function parsePreview(raw: unknown, limits: Limits, errs: string[]): Preview | null {
+  if (raw === undefined || raw === null) return null
+  if (!isObj(raw)) {
+    errs.push('plan.preview: objeto { argv, port }')
+    return null
+  }
+  onlyKeys(raw, ['argv', 'port'], errs, 'plan.preview')
+  const port = int(raw, 'port', 8000, 1024, 65535, errs, 'plan.preview')
+  const argv = raw.argv
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > 16 || argv.some(a => typeof a !== 'string' || !a || a.length > 200 || /[\0\r\n;&|<>`$]/.test(a))) {
+    errs.push('plan.preview.argv: lista de 1 a 16 argumentos sin caracteres de shell')
+    return null
+  }
+  const exe = exeName(argv[0])
+  if (!limits.allowedExecutables.includes(exe)) errs.push(`plan.preview.argv[0]: ejecutable no autorizado "${exe}"`)
+  const inline = (argv as string[]).slice(1).find(a => INLINE_CODE.test(a))
+  if (inline) errs.push(`plan.preview.argv: "${inline}" ejecuta código en línea`)
+  const why = sensitiveCommand(argv.join(' '))
+  if (why) errs.push(`plan.preview.argv: comando sensible (${why})`)
+  if ((argv as string[]).some(a => /^(0\.0\.0\.0|::)$/.test(a))) errs.push('plan.preview.argv: el servidor solo puede escuchar en 127.0.0.1')
+  // http.server escucha en todas las interfaces por defecto: se exige --bind explícito a la máquina local
+  if (argv.includes('http.server') && !/--bind\s+(127\.0\.0\.1|localhost)\b/.test((argv as string[]).join(' '))) errs.push('plan.preview.argv: http.server necesita "--bind", "127.0.0.1"')
+  return { argv: argv as string[], port }
 }
 
 /** Herramientas que una subtarea puede pedir además de las de su rol: MCP o búsqueda web, nunca shell ni escritura del motor. */
@@ -466,7 +499,7 @@ export type PlanResult = { ok: true; plan: Plan; warnings: string[] } | { ok: fa
 export function validatePlan(raw: unknown, limits: Limits): PlanResult {
   const errs: string[] = []
   if (!isObj(raw)) return { ok: false, errors: ['el plan debe ser un objeto JSON'] }
-  onlyKeys(raw, ['objective', 'scope', 'constraints', 'risks', 'complexity', 'checks', 'tasks', 'installs'], errs, 'plan')
+  onlyKeys(raw, ['objective', 'scope', 'constraints', 'risks', 'complexity', 'checks', 'tasks', 'installs', 'preview'], errs, 'plan')
   const complexity = raw.complexity ?? 'small'
   if (!['small', 'medium', 'large'].includes(complexity as string)) errs.push('plan.complexity: small | medium | large')
   const rawChecks = raw.checks ?? []
@@ -496,7 +529,9 @@ export function validatePlan(raw: unknown, limits: Limits): PlanResult {
     checks,
     tasks,
     installs: parseInstalls(raw.installs, errs),
+    preview: parsePreview(raw.preview, limits, errs),
   }
+  if (plan.tasks.some(t => t.visual) && !plan.preview) errs.push('plan.preview: las subtareas visuales necesitan un servidor local para verse ({ "argv": [...], "port": N })')
   if (errs.length) return { ok: false, errors: errs }
   const overlap = checkOverlaps(plan)
   if (overlap.errors.length) return { ok: false, errors: overlap.errors }

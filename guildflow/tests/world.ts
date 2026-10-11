@@ -17,10 +17,11 @@ export type World = {
   agents: { id: string; type: string }[]
   spawned: Record<string, unknown>[]
   ran: string[]
+  registered: { name: string; tools?: readonly string[]; model?: string; skills?: readonly string[] }[]
 }
 
-export function world(on: On, opts: { quest?: Quest; answers?: string[]; agentListFails?: boolean; proc?: (argv: readonly string[]) => { exitCode: number; stdout: string; stderr: string } } = {}): World {
-  const w: World = { files: new Map(), runs: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], prompts: [], agents: [], spawned: [], ran: [] }
+export function world(on: On, opts: { quest?: Quest; answers?: string[]; agentListFails?: boolean; registerFails?: boolean; proc?: (argv: readonly string[]) => { exitCode: number; stdout: string; stderr: string } } = {}): World {
+  const w: World = { files: new Map(), runs: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], prompts: [], agents: [], spawned: [], ran: [], registered: [] }
   if (opts.quest) w.files.set(files(ROOT).quest, JSON.stringify(opts.quest))
   mock.clock(on, { now: 5_000 })
   mock.store(on)
@@ -71,6 +72,11 @@ export function world(on: On, opts: { quest?: Quest; answers?: string[]; agentLi
   on('tool.call', ($, e) => {
     w.ran.push(String(e.tool))
     return { result: 'ok' as never }
+  })
+  on('agent.register', ($, e) => {
+    if (opts.registerFails) return { deny: 'registro no disponible' }
+    w.registered.push({ name: e.name, tools: e.tools, model: e.model, skills: e.skills })
+    return { value: { agent: `guildflow:${e.name}` } as never }
   })
   on('agent.spawn', ($, e) => {
     w.spawned.push({ ...e })
