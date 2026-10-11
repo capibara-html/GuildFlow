@@ -1,0 +1,27 @@
+{
+  "name": "guildflow",
+  "version": "0.2.0",
+  "description": "GuildFlow: misiones de programación con roles (Maestro, Archimago, Artífice, Paladín), aprobación humana, verificación por el mod y límites duros",
+  "author": { "name": "capibara-html" },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "maxAttemptsPerTask": { "type": "number", "title": "Intentos por subtarea", "description": "Ejecuciones del Artífice por subtarea (tope del plugin: 10)", "default": 3, "min": 1 },
+    "maxQuestIterations": { "type": "number", "title": "Iteraciones por misión", "description": "Rondas de implementación en toda la misión (tope: 30)", "default": 8, "min": 1 },
+    "maxSameFailure": { "type": "number", "title": "Repeticiones del mismo fallo", "description": "Veces que puede repetirse una misma firma de fallo antes de bloquear (tope: 5)", "default": 2, "min": 1 },
+    "maxNoProgressRounds": { "type": "number", "title": "Rondas sin progreso", "description": "Rondas sin más criterios aprobados antes de detener (tope: 5)", "default": 2, "min": 1 },
+    "maxAgentsPerQuest": { "type": "number", "title": "Agentes por misión", "description": "Subagentes totales por misión (tope: 20)", "default": 12, "min": 1 },
+    "maxConcurrentAgents": { "type": "number", "title": "Agentes concurrentes", "description": "Subagentes a la vez (tope: 3)", "default": 3, "min": 1 },
+    "tokenBudgetPerQuest": { "type": "number", "title": "Presupuesto de tokens", "description": "Tokens de entrada + salida + escritura de caché por misión; las lecturas de caché se cuentan aparte (tope: 20000000)", "default": 2000000, "min": 10000 },
+    "costBudgetUsd": { "type": "number", "title": "Presupuesto USD equivalente", "description": "Coste equivalente a precio de API por misión; no es lo que se cobra en una suscripción (tope: 500)", "default": 25, "min": 0.1 },
+    "rateLimitPercent": { "type": "number", "title": "Umbral de uso de la suscripción (%)", "description": "Detiene la misión si una ventana de rateLimits supera este porcentaje (tope: 100)", "default": 90, "min": 1 },
+    "wallClockMinutes": { "type": "number", "title": "Tiempo máximo de misión (min)", "description": "Minutos activos por misión, sin contar pausas (tope: 480)", "default": 60, "min": 1 },
+    "maxFilesChanged": { "type": "number", "title": "Archivos modificados", "description": "Archivos distintos que puede escribir la misión (tope: 200)", "default": 25, "min": 1 },
+    "maxDiffLines": { "type": "number", "title": "Líneas de diff", "description": "Líneas añadidas + eliminadas en archivos de la misión (tope: 20000)", "default": 1500, "min": 1 },
+    "maxTurnsArchimago": { "type": "number", "title": "Turnos del Archimago", "description": "Peticiones al modelo por ejecución (tope: 60)", "default": 25, "min": 1 },
+    "maxTurnsArtifice": { "type": "number", "title": "Turnos del Artífice", "description": "Peticiones al modelo por ejecución (tope: 80)", "default": 40, "min": 1 },
+    "maxTurnsPaladin": { "type": "number", "title": "Turnos del Paladín", "description": "Peticiones al modelo por ejecución (tope: 60)", "default": 25, "min": 1 },
+    "archimagoEffort": { "type": "string", "title": "Esfuerzo del Archimago", "description": "high por defecto; xhigh para misiones arquitectónicas", "default": "high", "options": ["high", "xhigh"] },
+    "allowedExecutables": { "type": "string", "title": "Ejecutables de verificación", "description": "Lista separada por comas de ejecutables que pueden declararse en las comprobaciones", "default": "node,git,tsc,python,py,pytest,cargo,go,dotnet,deno,bun" }
+  }
+}

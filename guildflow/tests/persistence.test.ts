@@ -1,0 +1,93 @@
+import { describe, expect, test } from 'claude-code/testing'
+
+import { appendLog, Conflict, files, loadQuest, redact, saveQuest, storeKey, tampered, writeRun } from '../src/persistence'
+import { approved, ROOT } from './fixtures'
+import { memIo } from './memio'
+
+const F = files(ROOT)
+
+describe('quest.json', () => {
+  test('creación, escritura verificada, lectura y copia en $.store', async () => {
+    const m = memIo()
+    const saved = await saveQuest(m.io, approved())
+    expect(saved.rev).toBe(1)
+    expect(JSON.parse(m.files.get(F.quest)!).rev).toBe(1)
+    expect((m.store.get(storeKey(ROOT)) as { rev: number }).rev).toBe(1)
+    const l = await loadQuest(m.io, ROOT)
+    expect(l.source).toBe('file')
+    expect(l.quest?.id).toBe('q-test')
+  })
+
+  test('archivo malformado: se recupera de la última copia válida y se informa', async () => {
+    const m = memIo()
+    await saveQuest(m.io, approved())
+    m.files.set(F.quest, '{ roto')
+    m.files.delete(F.tmp)
+    const l = await loadQuest(m.io, ROOT)
+    expect(l.quest?.rev).toBe(1)
+    expect(l.source).toBe('store')
+    expect(l.problems.join()).toContain('no es válido')
+  })
+
+  test('escritura interrumpida: el temporal verificado más reciente gana', async () => {
+    const m = memIo()
+    const q1 = await saveQuest(m.io, approved())
+    m.files.set(F.tmp, JSON.stringify({ ...q1, rev: 2 }))
+    expect((await loadQuest(m.io, ROOT)).quest?.rev).toBe(2)
+  })
+
+  test('un error de escritura conserva el estado válido anterior', async () => {
+    const m = memIo()
+    const q1 = await saveQuest(m.io, approved())
+    const bad = memIo({}, undefined, { failWriteOn: /quest\.json$/ })
+    for (const [k, v] of m.files) bad.files.set(k, v)
+    await expect(saveQuest(bad.io, { ...q1, state: 'HALTED' })).rejects.toThrow('EIO')
+    const l = await loadQuest(bad.io, ROOT)
+    expect(l.quest?.rev).toBeGreaterThanOrEqual(1)
+    expect(JSON.parse(bad.files.get(F.quest)!).state).toBe('DISPATCH')
+  })
+
+  test('control optimista: un escritor con revisión antigua se rechaza', async () => {
+    const m = memIo()
+    const q0 = approved()
+    await saveQuest(m.io, q0)
+    await expect(saveQuest(m.io, q0)).rejects.toBeInstanceOf(Conflict)
+  })
+
+  test('separación entre proyectos: una misión de otro proyecto no se carga', async () => {
+    const m = memIo()
+    await saveQuest(m.io, { ...approved(), project: 'c:/otro' })
+    m.files.set(F.quest, m.files.get('c:/otro/.guildflow/quest.json')!)
+    const l = await loadQuest(m.io, ROOT)
+    expect(l.quest).toBeNull()
+    expect(l.problems.join()).toContain('otro proyecto')
+    expect(storeKey('c:/a')).not.toBe(storeKey('c:/b'))
+  })
+
+  test('plan alterado fuera del mod tras la aprobación se detecta', () => {
+    const q = approved()
+    expect(tampered(q)).toBe(false)
+    q.plan!.tasks[0].criteria[0].text = 'otro criterio'
+    expect(tampered(q)).toBe(true)
+  })
+})
+
+describe('log.jsonl y runs/', () => {
+  test('append-only: las entradas anteriores se conservan en orden', async () => {
+    const m = memIo()
+    await appendLog(m.io, ROOT, [{ ev: 'a', data: { n: 1 } }], { questId: 'q-test', at: 1 })
+    await appendLog(m.io, ROOT, [{ ev: 'b', data: { n: 2 } }, { ev: 'c', data: {} }], { questId: 'q-test', at: 2 })
+    const lines = m.files.get(F.log)!.trim().split('\n').map(l => JSON.parse(l) as { ev: string })
+    expect(lines.map(l => l.ev)).toEqual(['a', 'b', 'c'])
+  })
+
+  test('las evidencias no guardan secretos conocidos', async () => {
+    const m = memIo()
+    await writeRun(m.io, ROOT, 'run-1-x', { stdout: 'token=abc123 ok sk-ABCDEFGHIJKLMNOPQRSTUV ghp_abcdefghijklmnopqrstuvwxyz0123' })
+    const text = m.files.get(`${F.runs}/run-1-x.json`)!
+    expect(text).not.toContain('abc123')
+    expect(text).not.toContain('sk-ABCDEF')
+    expect(text).not.toContain('ghp_')
+    expect(redact('password: hunter2')).toBe('password: [REDACTADO]')
+  })
+})
