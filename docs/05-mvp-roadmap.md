@@ -1,6 +1,23 @@
 # 05 — Hoja de ruta del MVP
 
-**Fecha:** 2026-10-10 · **Estado:** propuesta, pendiente de aprobación antes de implementar
+**Fecha:** 2026-10-10 · **Estado:** Fase 1 completada · Fase 2 implementada, con dos pruebas en vivo pendientes · actualizado 2026-10-11
+
+## Estado a 2026-10-11
+
+| Fase | Estado | Referencia |
+|---|---|---|
+| 1. PoC | **Completada.** 7 PASS y 1 INCONCLUSIVE (P8, `permissionMode`, que se descarta como control) | `06`, `07` |
+| 2. Núcleo del gremio | **Implementada.** 125 pruebas automáticas; misión de éxito y misión de fallo en vivo PASS. **Pendiente:** reinicio de Desktop en vivo y una misión de 2-3 subtareas | `08`, `09`, `10` |
+| 3. Tablón pixel art | No iniciada | §1 |
+| 4. Endurecimiento | No iniciada | §1 |
+
+**Cambios respecto a lo planeado:**
+- La misión de fallo termina en **`BLOCKED`**, por repetirse la misma firma de fallo, no en `HALTED`. `HALTED` queda para los límites de presupuesto, tiempo o rondas sin progreso y para la seguridad.
+- La autonomía se reforzó a petición de la persona usuaria:
+  - Las acciones que no encajan en el protocolo se rechazan con una explicación en lugar de preguntar.
+  - El Maestro solo se vigila mientras la misión trabaja.
+  - `autoApprovePlan` es opcional y aprueba solo planes no sensibles.
+- La UI mínima incluye además una línea de estado fija y avisos, porque sin ellas no se sabía si la misión trabajaba o había terminado.
 
 ## 0. Requisitos previos (los tiene que hacer el usuario)
 
@@ -44,8 +61,18 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 - Activos propios. Decidir entre generación procedural (como `portraitArt.ts`, pero con diseños nuestros) y sprites dibujados (Aseprite está disponible en este entorno como MCP).
 - Créditos y licencias en `ASSETS.md`.
 
+**Antes de la Fase 3** (recomendado tras la Fase 2):
+- Cerrar V16 (reinicio de Desktop) y V17 (misión de 2-3 subtareas con dependencias) de `10-test-results.md`.
+- Hacer una misión real en un repositorio propio, no en el testbed, para medir el coste y los diálogos en un caso de uso real.
+
+**Para el tablón:**
+- Leer la vista desde `guildflow.view` (`$.state`), que ya existe; no hace falta tocar `machine.ts`.
+- Seguir con SVG estático o SMIL, validado en P7. Medir el rendimiento con `Client` antes de añadir animación continua.
+
 ### Fase 4: Endurecimiento
 
+- Sandbox opcional: ejecutar `run_check` dentro de un contenedor o máquina virtual configurable. Es el riesgo residual principal de `09` §1.
+- Lista blanca de extensiones de código para `autoApprovePlan`, en lugar de la lista negra de rutas sensibles.
 - Worktrees para Artífices en paralelo + integración en serie.
 - Escriba-LLM opcional (Haiku) para resúmenes.
 - Empaquetado como marketplace (`.claude-plugin/marketplace.json`) y guía de instalación.
@@ -80,4 +107,11 @@ Servicio local auxiliar, agent teams, workflows como motor del ciclo, memoria se
 | U6 | Origen y licencia exacta de los `.wav` de claude-mods (si se reutilizaran) | Preguntar al autor o no reutilizarlos |
 | U7 | Repo canónico de Munder Difflin (`HarnessMD` frente a `chaitanyagiri`) | Irrelevante mientras no copiemos código |
 
-**Siguiente paso:** espero tu revisión de los cinco documentos. Con tu aprobación, empezaría por la fase 1 (PoC P1-P8).
+**Resueltas:**
+- U1: Sonnet y Haiku están disponibles (P1).
+- U2: `permissionMode` no es fiable como control (P8).
+- U3: el SVG en el panel es viable (P7, sin cifra de fps).
+- U4: `classic.Stop` no se usa como motor de autonomía (P4).
+- U6 y U7: no se reutiliza nada de esos repositorios (ver `guildflow/ASSETS.md`).
+
+**Sigue abierta:** U5, la estabilidad de la API de mods. La versión mínima probada es la 2.1.295.
