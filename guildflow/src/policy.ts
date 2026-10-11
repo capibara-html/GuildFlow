@@ -38,6 +38,10 @@ export const VISUAL_TOOLS: readonly string[] = [
   'read_page', 'get_page_text', 'find', 'resize_window', 'read_console_messages', 'tabs_context',
 ].map(t => `mcp__Claude_Browser__${t}`)
 
+/** Única configuración de launch.json que puede arrancar el navegador del gremio (la escribe el mod con el argv aprobado). */
+export const PREVIEW_NAME = 'guildflow-preview'
+const PREVIEW_TOOLS = ['preview_start', 'preview_stop', 'preview_logs']
+
 const LOCAL_URL = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)(:\d+)?(\/|$|\?|#)/i
 
 /** Motivo por el que una llamada al navegador sale de la máquina local o usa algo no permitido, o null. */
@@ -60,6 +64,8 @@ export function browserProblem(tool: string, input: Record<string, unknown> | un
       if (key === 'actions' && typeof o.name === 'string') {
         const nested = `mcp__Claude_Browser__${o.name}`
         if (!VISUAL_TOOLS.includes(nested) || o.name === 'browser_batch') return `acción de navegador no permitida en lote: ${o.name}`
+        const why = previewProblem(o.name, o.input)
+        if (why) return why
       }
       for (const [k, x] of Object.entries(o)) {
         const r = walk(x, k)
@@ -69,10 +75,20 @@ export function browserProblem(tool: string, input: Record<string, unknown> | un
     return null
   }
   if (!VISUAL_TOOLS.includes(tool)) return `${tool} no está entre las herramientas de navegador permitidas`
+  const top = previewProblem(tool.replace('mcp__Claude_Browser__', ''), input)
+  if (top) return top
   const nested = walk(input ?? {}, '')
   if (nested) return nested
   const away = urls.find(u => !LOCAL_URL.test(u))
   return away ? `el navegador del gremio solo abre la máquina local; rechazado: ${away.slice(0, 120)}` : null
+}
+
+/** preview_start/stop/logs: solo la configuración del mod (cualquier otra de launch.json ejecutaría comandos arbitrarios). */
+function previewProblem(name: string, input: unknown): string | null {
+  if (!PREVIEW_TOOLS.includes(name)) return null
+  const cfg = (input as { name?: unknown } | null)?.name
+  if (name === 'preview_start' && cfg === undefined) return null // con url: la comprueba LOCAL_URL
+  return cfg === PREVIEW_NAME ? null : `${name} solo puede usar la configuración "${PREVIEW_NAME}" (la del plan aprobado)`
 }
 
 /** Modelo de un rol para una subtarea (el Artífice puede ir con Opus en subtareas creativas). */

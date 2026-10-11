@@ -208,7 +208,9 @@ export function approvalText(id: string, plan: Plan, limits: Limits): string | n
   const installs = plan.installs.length
     ? ` — Recursos de terceros: ${plan.installs.map(i => (i.kind === 'software' ? `DESCARGAR TÚ ${i.name} (${i.url})` : `INSTALAR ${i.kind} ${i.name}: ${i.argv.join(' ')}`)).join('; ')}`
     : ''
-  const preview = plan.preview ? ` — Vista previa: ${JSON.stringify(plan.preview.argv)} en el puerto ${plan.preview.port}` : ''
+  const preview = plan.preview
+    ? ` — Vista previa: ${JSON.stringify(plan.preview.argv)} en el puerto ${plan.preview.port} (el navegador ejecuta el código del proyecto, que puede usar la red)`
+    : ''
   const agents = Math.min(limits.maxAgentsPerQuest, plan.tasks.reduce((n, t) => n + Math.min(t.maxAttempts, limits.maxAttemptsPerTask) * 2, 0))
   const text =
     `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs}${preview} — ` +

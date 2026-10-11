@@ -7,7 +7,7 @@ import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
-import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
+import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
 import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
 import { checkOverlaps, exactArgs, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
@@ -523,7 +523,6 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
 }
 
 /** Configuración del navegador integrado para ver la interfaz: .claude/launch.json con el servidor del plan. */
-const PREVIEW_NAME = 'guildflow-preview'
 async function ensurePreview($: $, q: Quest): Promise<string | null> {
   const pv = q.plan?.preview
   if (!pv) return null
@@ -534,12 +533,11 @@ async function ensurePreview($: $, q: Quest): Promise<string | null> {
   } catch {
     return 'launch.json existe pero no se puede leer; arranca el servidor con el nombre que ya tenga'
   }
-  const list = (cfg.configurations ??= [])
-  if (!list.some(c => c.name === PREVIEW_NAME)) {
-    list.push({ name: PREVIEW_NAME, runtimeExecutable: pv.argv[0], runtimeArgs: pv.argv.slice(1), port: pv.port } as never)
-    await $.fs.write(path, `${JSON.stringify(cfg, null, 2)}\n`)
-    await note($, 'preview.configured', { path: '.claude/launch.json', argv: pv.argv, port: pv.port })
-  }
+  // Siempre con el argv aprobado: una entrada previa con el mismo nombre (del repo) no se respeta
+  const mine = { name: PREVIEW_NAME, runtimeExecutable: pv.argv[0], runtimeArgs: pv.argv.slice(1), port: pv.port }
+  cfg.configurations = [...(cfg.configurations ?? []).filter(c => c.name !== PREVIEW_NAME), mine as never]
+  await $.fs.write(path, `${JSON.stringify(cfg, null, 2)}\n`)
+  await note($, 'preview.configured', { path: '.claude/launch.json', argv: pv.argv, port: pv.port })
   return PREVIEW_NAME
 }
 

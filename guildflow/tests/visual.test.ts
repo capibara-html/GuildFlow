@@ -63,6 +63,9 @@ describe('plan visual', () => {
     expect(errorsOf(visualRaw({ preview: { argv: ['python', '-m', 'http.server', '8000', '--bind', '0.0.0.0'], port: 8000 } }))).toContain('127.0.0.1')
     expect(errorsOf(visualRaw({ preview: { argv: ['bash', '-c', 'serve'], port: 8000 } }))).toContain('preview')
     expect(errorsOf(visualRaw({ preview: { ...PREVIEW, port: 80 } }))).toContain('port')
+    expect(errorsOf(visualRaw({ preview: { argv: ['node', 'server.js', '--port', '3000'], port: 3000 } }))).toContain('loopback')
+    expect(errorsOf(visualRaw({ preview: { argv: ['node', 'server.js', '--host=0.0.0.0'], port: 3000 } }))).toContain('127.0.0.1')
+    expect(errorsOf(visualRaw({ preview: { argv: ['node', 'server.js', '--host=127.0.0.1'], port: 3000 } }))).toBe('')
   })
   test('modelo de la subtarea: solo sonnet u opus; el diálogo lo muestra junto a la vista previa', () => {
     const bad = visualRaw()
@@ -74,6 +77,7 @@ describe('plan visual', () => {
     expect(t).toContain('visual: con navegador local')
     expect(t).toContain('Artífice Opus')
     expect(t).toContain('Vista previa')
+    expect(t).toContain('puede usar la red')
     expect(modelFor(approved(visualRaw()), 'artifice', 't1')).toBe('claude-opus-5-5')
     expect(modelFor(approved(), 'artifice', 't1')).toBe('claude-sonnet-5-5')
   })
@@ -102,6 +106,13 @@ describe('navegador del gremio: solo la máquina local', () => {
     expect(batch([{ name: 'navigate', input: { url: 'https://evil.example' } }])).toContain('máquina local')
     expect(VISUAL_TOOLS).not.toContain('mcp__Claude_Browser__javascript_tool')
   })
+  test('vista previa solo con la configuración del mod (arriba y en lotes)', () => {
+    expect(browserProblem('mcp__Claude_Browser__preview_start', { name: 'guildflow-preview' })).toBeNull()
+    expect(browserProblem('mcp__Claude_Browser__preview_start', { name: 'pixel-chess' })).toContain('guildflow-preview')
+    expect(browserProblem('mcp__Claude_Browser__preview_logs', { name: 'otro' })).toContain('guildflow-preview')
+    expect(browserProblem('mcp__Claude_Browser__browser_batch', { actions: [{ name: 'preview_start', input: { name: 'deploy' } }] })).toContain('guildflow-preview')
+  })
+
   test('el Paladín de una subtarea visual también tiene navegador', () => {
     expect(decide(facts(reviewingVisual(), { ...nav('http://localhost:8000/'), caller: asPal })).kind).toBe('allow')
   })
@@ -122,13 +133,15 @@ describe('criterios visuales: el Paladín tiene que mirar', () => {
 })
 
 describe('integración: lanzamiento de una subtarea visual creativa', () => {
-  test('el Artífice sale con Opus y el mod prepara la vista previa del navegador', async ($, on) => {
+  test('el Artífice sale con Opus y el mod prepara la vista previa con el argv aprobado (aunque el repo traiga otra)', async ($, on) => {
     const q = { ...approved(visualRaw()), rev: 2 }
     const w = world(on, { quest: q })
+    const path = `${ROOT}/.claude/launch.json`
+    w.files.set(path, JSON.stringify({ configurations: [{ name: 'otra', runtimeExecutable: 'node' }, { name: 'guildflow-preview', runtimeExecutable: 'node', runtimeArgs: ['malicioso.js'] }] }))
     await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' } as never)
-    const launch = w.files.get(`${ROOT}/.claude/launch.json`)
-    expect(launch).toBeDefined()
-    expect(JSON.parse(launch!).configurations[0]).toEqual({ name: 'guildflow-preview', runtimeExecutable: 'python', runtimeArgs: ['-m', 'http.server', '8000', '--bind', '127.0.0.1'], port: 8000 })
+    const configs = JSON.parse(w.files.get(path)!).configurations as { name: string }[]
+    expect(configs.map(c => c.name)).toEqual(['otra', 'guildflow-preview'])
+    expect(configs[1]).toEqual({ name: 'guildflow-preview', runtimeExecutable: 'python', runtimeArgs: ['-m', 'http.server', '8000', '--bind', '127.0.0.1'], port: 8000 })
     const r = await $.agent.spawn({ prompt: 'diseña', subagentType: 'guildflow:artifice' } as never)
     expect(r.agentId).toBeDefined()
     const s = w.spawned[0] as { model: string; prompt: string; subagentType: string }

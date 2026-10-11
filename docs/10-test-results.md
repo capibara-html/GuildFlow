@@ -17,7 +17,7 @@
 
 ## 2. Pruebas automáticas: `claude plugin test guildflow`
 
-Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **156 pass, 0 fail** (125 de la Fase 2 + 31 de la Fase 2.5: 11 en `visual.test.ts`, 12 en `autonomy.test.ts` y 8 de integración en `hooks.test.ts`: arranque de `/quest`, `Glob` absoluto dentro del proyecto, `start_task` sin brief, Archimago obligatorio con más de una subtarea, Maestro en Sonnet y `maestroModel`).
+Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **157 pass, 0 fail** (125 de la Fase 2 + 32 de la Fase 2.5: 12 en `visual.test.ts`, 12 en `autonomy.test.ts` y 8 de integración en `hooks.test.ts`: arranque de `/quest`, `Glob` absoluto dentro del proyecto, `start_task` sin brief, Archimago obligatorio con más de una subtarea, Maestro en Sonnet y `maestroModel`).
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
@@ -28,7 +28,7 @@ Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones prop
 | `tests/persistence.test.ts` | 12 | Escritura verificada, archivo malformado, escritura interrumpida, falsificación una revisión por delante, otra misión más reciente, error de escritura (también en `$.store`), control optimista, separación entre proyectos, plan alterado, registro append-only, tachado de secretos |
 | `tests/hooks.test.ts` | 34 | Integración con el plugin cargado por el motor: guarda central, fallo en cerrado, falsificación de `quest.json` → HALTED/safety, `SubagentHandback`, Maestro sin diálogos (trabajando y detenida), `run_check`, `agent.spawn` (imposición de modelo, plaza, tipos ajenos), aprobación humana, `autoApprovePlan` desactivado, activado y con plan sensible |
 | `tests/autonomy.test.ts` | 12 | Fase 2.5: presupuesto de agentes según el plan (y con intentos extra), especificación ejecutable (dependencia obligatoria, huellas nuevas solo con la subtarea terminada), recursos por subtarea (validación, solo lectura frente a escritura, el Artífice usa solo los de SU subtarea), instalaciones (argv exacto de `claude`, software solo con url, aprobación humana, el Maestro solo ejecuta el comando aprobado) |
-| `tests/visual.test.ts` | 11 | Plan visual (criterio visual obligatorio, `preview` solo en 127.0.0.1, modelo por subtarea), navegador solo local (también en lotes; sin JavaScript ni formularios), el Paladín no puede juzgar lo visual sin capturas, variante registrada con Opus y navegador, y vuelta al tipo base si falla el registro |
+| `tests/visual.test.ts` | 12 | Plan visual (criterio visual obligatorio, `preview` solo en 127.0.0.1, modelo por subtarea), navegador solo local (también en lotes; sin JavaScript ni formularios), el Paladín no puede juzgar lo visual sin capturas, variante registrada con Opus y navegador, y vuelta al tipo base si falla el registro |
 | `tests/presentation.test.ts` | 5 | Diálogo de aprobación completo o rechazado, agentes perdidos no aparecen como activos, línea de estado, progreso solo a partir de evidencia |
 
 ## 3. Pruebas en vivo (Desktop 2.1.295)

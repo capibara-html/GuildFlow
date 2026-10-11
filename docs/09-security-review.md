@@ -58,9 +58,12 @@
 | 6 | Revisión automática (`363832b`) | La aprobación automática no consideraba sensibles `CLAUDE.md`, `AGENTS.md`, `.claude/` anidados, `.mcp.json`, `.devcontainer`, `.envrc`, `Makefile` ni los hooks de pre-commit, que cambian lo que ejecutan otras herramientas o agentes | Media | Añadidos a `SENSITIVE_PATHS`; el Artífice tampoco los escribe dentro de un directorio concedido en misiones aprobadas automáticamente | Corregido (`e7b63a8`) |
 | 7 | Revisión automática (`363832b`) | Diferencia de interpretación en el shell de solo lectura: `Get-ChildItem Env:` (variables de entorno, posibles secretos), `HKLM:` o `x\\host\share` pasaban porque solo se miraba el prefijo | Media | Se rechaza cualquier argumento con `:`, `\` o `//` | Corregido (`e7b63a8`) |
 | 8 | Uso real | Exceso de diálogos (42 en una misión) que empujaba a aprobar sin leer | Usabilidad con efecto en la seguridad | Rechazo con explicación en lugar de preguntar; guarda del Maestro solo mientras la misión trabaja; ver `08` §5 | Corregido (`363832b`) |
-| 9 | Revisión automática (`87d9b44`) | La aprobación automática deducía "solo lectura" por el nombre de la herramienta MCP (`get_…`, `list_…`), lo que un servidor puede falsear. Además `WebFetch` puede sacar datos en la URL | Media | Lista de confianza explícita `trustedTools` (por defecto: Context7 y `WebSearch`). Cualquier otra herramienta de recursos hace sensible el plan | Corregido (pendiente de commit) |
+| 9 | Revisión automática (`87d9b44`) | La aprobación automática deducía "solo lectura" por el nombre de la herramienta MCP (`get_…`, `list_…`), lo que un servidor puede falsear. Además `WebFetch` puede sacar datos en la URL | Media | Lista de confianza explícita `trustedTools` (por defecto: Context7 y `WebSearch`). Cualquier otra herramienta de recursos hace sensible el plan | Corregido (`29eef4b`) |
 
-## 5. Riesgos residuales (aceptados y documentados)
+## 5. Rie| 10 | Revisión automática (`1ed29e5`) | `preview_start` con cualquier `name` arrancaba otras configuraciones de `launch.json`, que son comandos arbitrarios; una entrada previa `guildflow-preview` del repo se respetaba | Media | `preview_*` solo con `guildflow-preview` (también en lotes), y el mod reescribe siempre esa entrada con el `argv` aprobado | Corregido |
+| 11 | Revisión automática (`1ed29e5`) | La vista previa ejecuta en el navegador el JavaScript que escribió el Artífice, que puede usar la red: restringir las URL pedidas no es una frontera de red | Media | No se puede bloquear desde un plugin. Es el mismo riesgo residual que `run_check` (§1). Se hace visible en el diálogo de aprobación ("el navegador ejecuta el código del proyecto, que puede usar la red") y queda documentado | Aceptado y visible |
+| 12 | Revisión automática (`1ed29e5`) | El bind de loopback solo se exigía a `http.server`, y otros servidores escuchan en todas las interfaces por defecto | Media | Todo `preview` debe declarar un bind de loopback explícito; se rechazan `0.0.0.0`, `::`, `*` y `--host` no local | Corregido |
+sgos residuales (aceptados y documentados)
 
 1. **Sin sandbox del sistema operativo** (§1). Es el riesgo principal.
 2. **El hash no es criptográfico** (FNV-1a doble). Detecta cambios accidentales o ingenuos, no a un adversario que fabrique colisiones. Un adversario con acceso a tu usuario puede además escribir `$.store` directamente: GuildFlow no defiende contra procesos locales con tus permisos.
@@ -71,7 +74,9 @@
    - Hoy la opción está activada en `~/.claude/settings.json` de esta máquina, a petición de la persona usuaria.
 5. **Inyección de prompt** desde el contenido del repositorio. Los briefs la declaran como dato, pero un modelo puede ser influido. El daño posible queda acotado por las guardas anteriores, no por el modelo.
 6. **El tachado de secretos** reconoce solo patrones conocidos. Un secreto con otro formato puede quedar en `runs/*.json`. `.guildflow/` debe estar en `.gitignore`, como en el testbed.
-7. **Navegador de las subtareas visuales:** la guarda comprueba las URL que se piden (`navigate`, `preview_start`, lotes) y prohíbe JavaScript y formularios. Pero un clic (`computer`) sobre un enlace de la propia página podría llevar a un sitio externo. El riesgo es bajo, porque la página es la del proyecto y no se pueden teclear datos en formularios, y está aceptado.
+7. **Navegador de las subtareas visuales:** la guarda comprueba las URL que se piden (`navigate`, `preview_start`, lotes) y prohíbe la herramienta de JavaScript y los formularios.
+   - **Lo que queda abierto:** la propia página ejecuta el código del proyecto, que puede usar la red, y un clic (`computer`) sobre un enlace podría llevar a un sitio externo.
+   - **Por qué se acepta:** es el mismo riesgo de "código del proyecto con tus permisos" del §1, y el diálogo de aprobación lo indica.
 8. **El Maestro puede escribir fuera del proyecto con aprobación humana** (`5-write` → diálogo). Es intencionado: está en la lista de acciones sensibles.
 9. **API de mods en acceso anticipado.** Un cambio del motor puede alterar la semántica de los eventos. Versión mínima probada: 2.1.295.
 

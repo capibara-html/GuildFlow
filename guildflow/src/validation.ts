@@ -430,9 +430,12 @@ function parsePreview(raw: unknown, limits: Limits, errs: string[]): Preview | n
   if (inline) errs.push(`plan.preview.argv: "${inline}" ejecuta código en línea`)
   const why = sensitiveCommand(argv.join(' '))
   if (why) errs.push(`plan.preview.argv: comando sensible (${why})`)
-  if ((argv as string[]).some(a => /^(0\.0\.0\.0|::)$/.test(a))) errs.push('plan.preview.argv: el servidor solo puede escuchar en 127.0.0.1')
-  // http.server escucha en todas las interfaces por defecto: se exige --bind explícito a la máquina local
-  if (argv.includes('http.server') && !/--bind\s+(127\.0\.0\.1|localhost)\b/.test((argv as string[]).join(' '))) errs.push('plan.preview.argv: http.server necesita "--bind", "127.0.0.1"')
+  // Muchos servidores escuchan en todas las interfaces por defecto: se exige un bind de loopback explícito y nada abierto
+  const joined = (argv as string[]).join(' ')
+  if (/(^|[\s=])(0\.0\.0\.0|::|\*|\[::\])(\s|:|$)/.test(joined) || /--host(\s|=)(?!127\.0\.0\.1|localhost)/.test(joined))
+    errs.push('plan.preview.argv: el servidor solo puede escuchar en 127.0.0.1')
+  if (!(argv as string[]).some(a => /^(127\.0\.0\.1|localhost)$/.test(a) || /^--?(bind|host|hostname|listen|address)=(127\.0\.0\.1|localhost)(:\d+)?$/.test(a)))
+    errs.push('plan.preview.argv: declara el bind de loopback explícito (por ejemplo "--bind", "127.0.0.1" o "--host=127.0.0.1")')
   return { argv: argv as string[], port }
 }
 
