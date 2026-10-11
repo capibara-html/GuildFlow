@@ -50,7 +50,7 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 |---|---|---|
 | `autoApprovePlan` | `false` | Aprueba sin diálogo **solo** los planes que no tocan dependencias, CI o despliegue, migraciones, secretos, configuración del repo o del editor, ni instrucciones de agentes (`CLAUDE.md`, `.claude/`, `.mcp.json`…), y que no son `large` |
 | `maxAttemptsPerTask` · `maxQuestIterations` · `maxSameFailure` · `maxNoProgressRounds` | 3 · 8 · 2 · 2 | Topes 10 · 30 · 5 · 5 |
-| `maxAgentsPerQuest` · `maxConcurrentAgents` | 12 · 3 | Topes 20 · 3 (hoy la ejecución es secuencial) |
+| `maxAgentsPerQuest` · `maxConcurrentAgents` | 40 · 3 | Techo; el presupuesto real se calcula del plan (2 por intento y subtarea). Topes 60 · 3 (hoy la ejecución es secuencial) |
 | `tokenBudgetPerQuest` · `costBudgetUsd` · `rateLimitPercent` · `wallClockMinutes` | 2M · 25 · 90 · 60 | El USD es equivalente a precio de API, no lo facturado |
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |
@@ -65,7 +65,7 @@ Los valores fuera de rango se acotan a los topes: un límite no se puede desacti
 /quest Corrige la función sum de src/math.js para que devuelva a+b. Comprobación: node --test test/math.test.js (mínimo 1 test).
 ```
 
-1. El Maestro prepara un plan: subtareas, rutas que puede escribir cada una, comprobaciones con argv exacto y criterios.
+1. El Maestro arranca solo y decide cómo planificar: él mismo si el cambio es acotado, o el Archimago, que además recibe el inventario de MCP y skills de la sesión. El plan define subtareas, rutas que puede escribir cada una, comprobaciones con argv exacto, criterios y los recursos que necesita. Si no hay tests, la primera subtarea los escribe y quedan congelados.
 2. Aprobación. Sin `autoApprovePlan`, aparece un diálogo con el plan completo, y solo vale ese diálogo, no un "sí" en el chat. Con `autoApprovePlan`, el plan se aprueba solo si no es sensible.
 3. El Artífice implementa, el mod ejecuta las comprobaciones y el Paladín revisa. Si algo falla, se reintenta con la evidencia. Si el mismo fallo se repite, la misión se **bloquea** y te pide decisión.
 4. Al terminar: `.guildflow/summary-<id>.md`.
@@ -81,6 +81,8 @@ Los valores fuera de rango se acotan a los topes: un límite no se puede desacti
 - La línea de estado bajo el cuadro de texto: trabajando, completada, bloqueada o esperando tu aprobación.
 - La franja encima del cuadro de texto.
 - El panel "Gremio · GuildFlow".
+
+**Recursos de terceros:** si el plan propone instalar un plugin, servidor MCP o skill, lo ves en el diálogo de aprobación y, si apruebas, **GuildFlow lo instala** (`claude mcp add …`, `claude plugin install …`). Si hace falta software descargable, te indica qué descargar y de dónde. Un recurso recién instalado puede no estar disponible hasta la próxima sesión.
 
 **Qué te pide GuildFlow:**
 - La aprobación del plan, salvo con `autoApprovePlan`.

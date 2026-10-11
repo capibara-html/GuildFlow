@@ -244,3 +244,55 @@ describe('herramienta quest y aprobación humana', () => {
     expect(denied(await call($, { tool: 'mcp__guildflow__quest', action: 'status', force: true }))).toBeDefined()
   })
 })
+
+describe('arranque de /quest (skill del plugin: abre el turno del Maestro)', () => {
+  test('con petición: crea la misión y deja pasar al prompt de la skill', async ($, on) => {
+    const w = world(on, {})
+    const passed: string[] = []
+    on('command.run', ($, e) => {
+      passed.push(`${e.command}:${e.args}`)
+      return { context: ['prompt de la skill'] }
+    })
+    await $.command.run({ command: 'quest', args: 'arregla la suma' } as never)
+    expect(passed).toEqual(['quest:arregla la suma'])
+    expect(saved(w).state).toBe('PLANNING')
+    expect(saved(w).request).toBe('arregla la suma')
+  })
+
+  test('sin petición o con una misión trabajando: responde el mod y NO abre turno', async ($, on) => {
+    world(on, { quest: implementing() })
+    const passed: string[] = []
+    on('command.run', ($, e) => {
+      passed.push(e.command)
+      return {}
+    })
+    const empty = (await $.command.run({ command: 'quest', args: '  ' } as never)) as { text?: string }
+    expect(empty.text).toContain('Uso: /quest')
+    const busy = (await $.command.run({ command: 'guildflow:quest', args: 'otra cosa' } as never)) as { text?: string }
+    expect(busy.text).toContain('Ya hay una misión trabajando')
+    expect(passed).toEqual([])
+  })
+})
+
+describe('ajustes tras Pixel Chess', () => {
+  test('un Glob con patrón absoluto DENTRO del proyecto no es una lectura de fuera', async ($, on) => {
+    const q = implementing()
+    q.agents.push({ ...agent('pal', 'paladin', 't1') })
+    q.state = 'REVIEWING'
+    q.slot = null
+    const w = world(on, { quest: q })
+    expect(denied(await call($, { tool: 'Glob', pattern: `${ROOT}/src/**/*.js`, agentId: 'pal' }))).toBeUndefined()
+    expect(denied(await call($, { tool: 'Glob', pattern: 'C:/otro/**/*', agentId: 'pal' }))).toBeDefined()
+    expect(w.ran).toEqual(['Glob'])
+  })
+
+  test('start_task no devuelve el brief al Maestro (se inyecta al lanzar): menos contexto', async ($, on) => {
+    world(on, { quest: { ...approved(), rev: 2 } })
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' })
+    const body = String(r.result)
+    expect(body).toContain('IMPLEMENTING')
+    expect(body).not.toContain('Rutas que PUEDES modificar')
+    const spawned = await $.agent.spawn({ prompt: 'hazlo', subagentType: 'guildflow:artifice' } as never)
+    expect(spawned.agentId).toBeDefined()
+  })
+})

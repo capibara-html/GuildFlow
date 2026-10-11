@@ -222,9 +222,24 @@ export function startReview(q: Quest, now: number): Outcome {
 }
 
 /** Por qué no puede lanzarse un agente de este rol ahora (null si puede). */
+/**
+ * Agentes que la misión puede lanzar: los Archimagos ya lanzados + 2 por cada intento permitido de cada
+ * subtarea (Artífice + Paladín), incluidos los intentos extra concedidos al reanudar. Sin plan: el techo de
+ * userConfig. Nunca supera ese techo. Así el límite escala con el plan aprobado y no corta una misión que
+ * cumple su plan, pero sigue acotando los bucles.
+ */
+export function agentBudget(q: Quest): number {
+  const ceiling = q.limits.maxAgentsPerQuest
+  if (!q.plan) return ceiling
+  const planners = q.agents.filter(a => a.role === 'archimago').length
+  const perTasks = q.plan.tasks.reduce((n, t) => n + maxAttempts(q, t.id) * 2, 0)
+  return Math.min(ceiling, planners + perTasks)
+}
+
 export function spawnBlocker(q: Quest, role: Role): string | null {
   if (isStopped(q)) return `la misión está ${q.state}`
-  if (q.agentsSpawned >= q.limits.maxAgentsPerQuest) return `límite de ${q.limits.maxAgentsPerQuest} agentes por misión`
+  const budget = agentBudget(q)
+  if (q.agentsSpawned >= budget) return `límite de ${budget} agentes para este plan (techo ${q.limits.maxAgentsPerQuest})`
   const running = q.agents.filter(a => a.status === 'running').length
   if (running >= q.limits.maxConcurrentAgents) return `límite de ${q.limits.maxConcurrentAgents} agentes concurrentes`
   if (role === 'archimago') return q.state === 'PLANNING' ? null : `el Archimago solo planifica (estado ${q.state})`
@@ -509,7 +524,18 @@ export function limitBreach(q: Quest, now: number, limits: Limits = q.limits): s
 /** Suma el uso de una petición al agente o a la sesión principal (nunca a ambos). */
 export function account(
   q: Quest,
-  a: { agentId: string | null; tokens: number; cacheRead: number; costUsd: number | null; ratePercent: number | null; unavailable: string[]; model?: string; effort?: Effort | null },
+  a: {
+    agentId: string | null
+    tokens: number
+    cacheRead: number
+    costUsd: number | null
+    ratePercent: number | null
+    unavailable: string[]
+    model?: string
+    effort?: Effort | null
+    /** Desglose de `tokens` para medir cuánto es contexto nuevo y cuánto texto escrito por el modelo. */
+    split?: { input: number; output: number; cacheWrite: number }
+  },
   now: number,
 ): Outcome {
   return op(q, now, (c, log) => {
@@ -524,15 +550,34 @@ export function account(
       if (a.model) rec.model = a.model
       if (a.effort !== undefined) rec.effort = a.effort
     } else u.mainTokens += a.tokens
+    let costDelta: number | null = null
     if (a.costUsd !== null) {
       if (u.costStartUsd === null) u.costStartUsd = a.costUsd
       const total = Math.max(0, a.costUsd - u.costStartUsd)
-      if (rec) rec.costUsd += Math.max(0, total - u.costUsd)
+      costDelta = Math.max(0, total - u.costUsd)
+      if (rec) rec.costUsd += costDelta
       u.costUsd = total
     }
     u.ratePercent = a.ratePercent
     for (const m of a.unavailable) if (!u.unavailable.includes(m)) u.unavailable.push(m)
-    log.push({ ev: 'usage.request', data: { agentId: a.agentId, role: rec?.role ?? 'maestro', model: a.model ?? null, effort: a.effort ?? null, tokens: a.tokens, cacheRead: a.cacheRead, costUsd: u.costUsd, ratePercent: a.ratePercent } })
+    log.push({
+      ev: 'usage.request',
+      data: { agentId: a.agentId, role: rec?.role ?? 'maestro', model: a.model ?? null, effort: a.effort ?? null, tokens: a.tokens, ...(a.split ?? {}), cacheRead: a.cacheRead, costDelta, costUsd: u.costUsd, ratePercent: a.ratePercent },
+    })
+  })
+}
+
+/**
+ * Una subtarea TERMINADA (revisada) que escribía rutas que certifican a otras (una especificación ejecutable:
+ * tests) fija sus huellas como nueva referencia de integridad. Solo tras `done`: hasta entonces las rutas
+ * siguen protegidas frente a las demás subtareas por su dependencia declarada.
+ */
+export function rebaseProtected(q: Quest, taskId: string, hashes: Record<string, string>, now: number): Outcome {
+  return op(q, now, (c, log) => {
+    if (c.progress[taskId]?.status !== 'done') throw new Error(`la subtarea ${taskId} no está terminada`)
+    if (!c.baseline) throw new Error('sin línea base')
+    c.baseline = { ...c.baseline, protectedHashes: { ...c.baseline.protectedHashes, ...hashes } }
+    log.push({ ev: 'baseline.protects.updated', data: { taskId, paths: Object.keys(hashes) } })
   })
 }
 

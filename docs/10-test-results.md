@@ -17,7 +17,7 @@
 
 ## 2. Pruebas automáticas: `claude plugin test guildflow`
 
-Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **125 pass, 0 fail.**
+Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **141 pass, 0 fail** (125 de la Fase 2 + 16 de la Fase 2.5: 12 en `autonomy.test.ts` y 4 de integración en `hooks.test.ts`: arranque de `/quest`, `Glob` absoluto dentro del proyecto, `start_task` sin brief).
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
@@ -26,7 +26,8 @@ Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones prop
 | `tests/validation.test.ts` | 20 | Normalización de rutas (Windows y POSIX, traversal, UNC, ADS), validación del plan, comandos sensibles, shell de solo lectura (incluidos `Env:`, `HKLM:` y UNC en mitad del argumento), flags de código en línea, límites acotados, planes sensibles |
 | `tests/verification.test.ts` | 18 | Conteo de tests, exit 0 con 0 tests → FAIL, argv congelado sin shell, tiempo agotado, ejecutable no autorizado, script de verificación modificado, código bajo prueba que reescribe su test o `quest.json`, **regresión del falso positivo**, cwd por enlace, `diff-scope` (alcance, `HEAD` movido, diff vacío, líneas, git endurecido) |
 | `tests/persistence.test.ts` | 12 | Escritura verificada, archivo malformado, escritura interrumpida, falsificación una revisión por delante, otra misión más reciente, error de escritura (también en `$.store`), control optimista, separación entre proyectos, plan alterado, registro append-only, tachado de secretos |
-| `tests/hooks.test.ts` | 26 | Integración con el plugin cargado por el motor: guarda central, fallo en cerrado, falsificación de `quest.json` → HALTED/safety, `SubagentHandback`, Maestro sin diálogos (trabajando y detenida), `run_check`, `agent.spawn` (imposición de modelo, plaza, tipos ajenos), aprobación humana, `autoApprovePlan` desactivado, activado y con plan sensible |
+| `tests/hooks.test.ts` | 30 | Integración con el plugin cargado por el motor: guarda central, fallo en cerrado, falsificación de `quest.json` → HALTED/safety, `SubagentHandback`, Maestro sin diálogos (trabajando y detenida), `run_check`, `agent.spawn` (imposición de modelo, plaza, tipos ajenos), aprobación humana, `autoApprovePlan` desactivado, activado y con plan sensible |
+| `tests/autonomy.test.ts` | 12 | Fase 2.5: presupuesto de agentes según el plan (y con intentos extra), especificación ejecutable (dependencia obligatoria, huellas nuevas solo con la subtarea terminada), recursos por subtarea (validación, solo lectura frente a escritura, el Artífice usa solo los de SU subtarea), instalaciones (argv exacto de `claude`, software solo con url, aprobación humana, el Maestro solo ejecuta el comando aprobado) |
 | `tests/presentation.test.ts` | 5 | Diálogo de aprobación completo o rechazado, agentes perdidos no aparecen como activos, línea de estado, progreso solo a partir de evidencia |
 
 ## 3. Pruebas en vivo (Desktop 2.1.295)
@@ -53,7 +54,8 @@ Evidencia en `testbed/.guildflow/`: `log.jsonl`, `runs/`, `quests/` y `summary-*
 | V16a | **Reinicio de la sesión de Desktop** con una misión abierta, sin agentes en curso | **PASS** | `q-20261011-181054` en `PLANNING` → `session.start {restarted:true, source:"store"}` → `PAUSED` "sesión reiniciada…", sin ningún relanzamiento automático → `/quest-resume` (humano) → `PLANNING`, y la misión terminó en `LOGGED` (log, 18:11:47–18:12:15) |
 | V16b | Reinicio **con un Artífice en curso** (agente marcado `lost`, intento devuelto) | **NOT RUN** en vivo | Cada Artífice duró unos 11 s y no coincidió con un reinicio. Cubierto por `machine.test.ts` ("reinicio: agentes en curso → lost, sin consumir intento") y en vivo por la PoC (P6, fila sintética) |
 | V17 | **Misión de 3 subtareas con dependencias** `q-20261011-181054` (t1 `slugify`, t2 `titleCase`, t3 `headline` ← t1, t2) | **PASS** | Aprobación automática; 3 Artífices y 3 Paladines en serie; 9/9 criterios con evidencia (`run-…-slug`, `-title`, `-headline`: 2 tests cada uno; `diff-scope` por subtarea); `summary-q-20261011-181054.md`; 3m43s activos, ≈$1,36; **0 diálogos**. Los 6 tests vuelven a pasar fuera del mod (`node --test`) |
-| V18 | Archimago (planificación delegada) | **NOT RUN** en vivo | Ambas misiones eran sencillas y las planificó el Maestro |
+| V18 | Archimago (planificación delegada) | **PASS** | `q-20261011-183248`: `agent.spawn.result` rol `archimago` → `claude-opus-5-5`; su plan de 5 subtareas y 26 criterios se aprobó y se ejecutó sin cambios |
+| V20 | **Misión realista desde cero: Pixel Chess** (`C:\Users\RYZEN\Desktop\pixel-chess`, sesión nueva con el plugin cargado por `CLAUDE_CODE_PLUGIN_DIRS`) | **PASS** | 5/5 subtareas (engine → ai, art, anim → ui) y **26/26 criterios**, cada subtarea al primer intento. 36 tests de aceptación escritos antes de la misión, incluidos perft 8902 y Kiwipete 2039. 11 agentes, 21m23s activos, 146k + 339k tokens, ≈$3,54. **1 diálogo** (aprobación del plan, `approval.needs_human: complejidad large`) y **1 rechazo**: un `Glob` del Paladín con patrón absoluto dentro del proyecto, falso positivo menor. El juego se probó a mano y la persona usuaria lo da por bueno |
 | V19 | `/quest-halt` durante un turno | **NOT RUN** en vivo | Prueba automática en `machine.test.ts` |
 
 ## 4. Consumo observado
@@ -61,6 +63,7 @@ Evidencia en `testbed/.guildflow/`: `log.jsonl`, `runs/`, `quests/` y `summary-*
 | Misión | Tokens (principal + subagentes) | USD equivalente | Nota |
 |---|---|---|---|
 | `q-20261011-172458` (éxito) | 10k + 31k | ≈ 0,45 | Además, 1,51 M de lecturas de caché, que no cuentan contra el presupuesto |
+| `q-20261011-183248` (Pixel Chess, 5 subtareas) | 146k + 339k | ≈ 3,54 | 11 agentes, unas 1 050 líneas de código; 4,45 M de lecturas de caché |
 | `q-20261011-181054` (3 subtareas) | 30k + 70k | ≈ 1,36 | 6 agentes; 4,99 M de lecturas de caché |
 | `q-20261011-174017` (fallo) | 18k + 21k al bloquearse | ≈ 0,61 | El contador siguió sumando trabajo de desarrollo mientras estaba bloqueada; corregido en `e7b63a8` |
 | `q-20261011-025758` (detenida) | 1,26 M | ≈ 18 | Inflada por el mismo error de contabilidad y por el contexto de unos 500 k de la sesión de desarrollo |
@@ -71,4 +74,8 @@ Evidencia en `testbed/.guildflow/`: `log.jsonl`, `runs/`, `quests/` y `summary-*
 
 La Fase 2 cumple su criterio de fin: la misión de varias subtareas llega a `DONE` y la misión de fallo se detiene por el límite correcto (`BLOCKED`).
 
-Queda opcional en vivo: V16b (reinicio con un agente en curso), V7, V14, V15, V18 y V19.
+Queda opcional en vivo: V16b (reinicio con un agente en curso), V7, V14, V15 y V19.
+
+**Abiertos tras V20:**
+- `$.prompt.submit` no arrancó el turno del Maestro tras `/quest` en Desktop (0 peticiones hasta que la persona escribió). Desde `bc4383f` el resultado se registra como `prompt.kick`. V20 corrió con la versión anterior del mod, así que la causa sigue sin confirmar.
+- La guarda rechaza patrones de `Glob` absolutos aunque apunten dentro del proyecto. Es un falso positivo menor: el Paladín siguió con rutas relativas.

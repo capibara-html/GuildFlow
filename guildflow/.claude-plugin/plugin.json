@@ -10,7 +10,7 @@
     "maxQuestIterations": { "type": "number", "title": "Iteraciones por misión", "description": "Rondas de implementación en toda la misión (tope: 30)", "default": 8, "min": 1 },
     "maxSameFailure": { "type": "number", "title": "Repeticiones del mismo fallo", "description": "Veces que puede repetirse una misma firma de fallo antes de bloquear (tope: 5)", "default": 2, "min": 1 },
     "maxNoProgressRounds": { "type": "number", "title": "Rondas sin progreso", "description": "Rondas sin más criterios aprobados antes de detener (tope: 5)", "default": 2, "min": 1 },
-    "maxAgentsPerQuest": { "type": "number", "title": "Agentes por misión", "description": "Subagentes totales por misión (tope: 20)", "default": 12, "min": 1 },
+    "maxAgentsPerQuest": { "type": "number", "title": "Techo de agentes por misión", "description": "Techo de subagentes por misión; el presupuesto real se calcula del plan aprobado (2 por intento y subtarea + Archimago). Tope: 60", "default": 40, "min": 1 },
     "maxConcurrentAgents": { "type": "number", "title": "Agentes concurrentes", "description": "Subagentes a la vez (tope: 3)", "default": 3, "min": 1 },
     "tokenBudgetPerQuest": { "type": "number", "title": "Presupuesto de tokens", "description": "Tokens de entrada + salida + escritura de caché por misión; las lecturas de caché se cuentan aparte (tope: 20000000)", "default": 2000000, "min": 10000 },
     "costBudgetUsd": { "type": "number", "title": "Presupuesto USD equivalente", "description": "Coste equivalente a precio de API por misión; no es lo que se cobra en una suscripción (tope: 500)", "default": 25, "min": 0.1 },

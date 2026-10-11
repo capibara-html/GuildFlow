@@ -1,6 +1,6 @@
 // Validación de entradas no confiables (plan del modelo, argumentos de herramientas, rutas) y utilidades puras.
 // Todo lo que no se puede demostrar válido se rechaza.
-import type { CheckDef, Criterion, Effort, Limits, Plan, Task } from '../types'
+import type { CheckDef, Criterion, Effort, Install, Limits, Plan, Task } from '../types'
 
 /** Hash no criptográfico (2×FNV-1a 32): detecta cambios accidentales, no adversarios. */
 export function hash(s: string): string {
@@ -95,12 +95,20 @@ const overlaps = (a: PathEntry, b: PathEntry) => {
   return false
 }
 
+/** ¿Dos entradas del plan (archivo o directorio/) se solapan? */
+export const pathsOverlap = (a: string, b: string) => {
+  const x = parseEntry(a)
+  const y = parseEntry(b)
+  return typeof x !== 'string' && typeof y !== 'string' && overlaps(x, y)
+}
+
 // ---------- comandos ----------
 
 const SENSITIVE: [RegExp, string][] = [
   [/\bgit\s+(push|reset\s+--hard|clean|filter-branch|update-ref|rebase|checkout\s+--|branch\s+-D|config\s+--global)\b/i, 'git destructivo o remoto'],
   [/\b(npm|pnpm|yarn|bun|pip3?|cargo|dotnet|gem|composer|choco|winget|scoop|brew|apt(-get)?)\s+(install|i|add|remove|rm|uninstall|publish|ci|update|upgrade|get)\b/i, 'instalación o publicación de dependencias'],
   [/\bgo\s+(install|get)\b/i, 'instalación de dependencias'],
+  [/\bclaude(\.exe)?\s+(mcp\s+(add|add-json|remove)|plugin\s+(install|uninstall|marketplace)|config\s+set)\b/i, 'instalación o configuración de Claude Code'],
   [/(^|[\s;&|(])(rm|del|rmdir|rd|erase|Remove-Item|format|mkfs|shred)\b/i, 'borrado'],
   [/\b(deploy|publish|release)\b/i, 'despliegue o publicación'],
   [/\b(terraform\s+apply|kubectl|helm|docker\s+(push|rm|system))\b/i, 'sistemas externos'],
@@ -135,6 +143,8 @@ export function sensitivePath(rel: string): string | null {
 export function sensitivePlan(plan: Plan): string[] {
   const out: string[] = []
   if (plan.complexity === 'large') out.push('complejidad large')
+  for (const i of plan.installs) out.push(i.kind === 'software' ? `requiere descargar ${i.name}` : `instala ${i.kind} ${i.name}`)
+  for (const t of plan.tasks) for (const tool of t.resources.tools) if (!readOnlyTool(tool)) out.push(`${t.id} usa ${tool} (puede escribir o actuar fuera)`)
   for (const t of plan.tasks) for (const p of t.paths) {
     const why = sensitivePath(p)
     if (why) out.push(`${t.id} escribe en ${p} (${why})`)
@@ -177,7 +187,7 @@ const HARD: Record<string, [number, number]> = {
   maxQuestIterations: [1, 30],
   maxSameFailure: [1, 5],
   maxNoProgressRounds: [1, 5],
-  maxAgentsPerQuest: [1, 20],
+  maxAgentsPerQuest: [1, 60],
   maxConcurrentAgents: [1, 3],
   tokenBudgetPerQuest: [10_000, 20_000_000],
   costBudgetUsd: [0.1, 500],
@@ -194,7 +204,7 @@ const DEFAULTS: Record<string, number> = {
   maxQuestIterations: 8,
   maxSameFailure: 2,
   maxNoProgressRounds: 2,
-  maxAgentsPerQuest: 12,
+  maxAgentsPerQuest: 40,
   maxConcurrentAgents: 3,
   tokenBudgetPerQuest: 2_000_000,
   costBudgetUsd: 25,
@@ -332,7 +342,7 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
     errs.push(`${w}: debe ser un objeto`)
     return null
   }
-  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation'], errs, w)
+  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation', 'resources'], errs, w)
   const id = typeof raw.id === 'string' && ID.test(raw.id) ? raw.id : null
   if (!id) errs.push(`${w}.id: identificador [a-z][a-z0-9_-]`)
   else if (seen.includes(id)) errs.push(`${w}.id: duplicado "${id}"`)
@@ -378,9 +388,76 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
     maxAttempts: int(raw, 'maxAttempts', limits.maxAttemptsPerTask, 1, limits.maxAttemptsPerTask, errs, w),
     doneWhen: str(raw, 'doneWhen', 500, errs, w),
     isolation: 'none',
+    resources: parseResources(raw.resources, w, errs),
   }
   if (id) seen.push(id)
   return task
+}
+
+/** Herramientas que una subtarea puede pedir además de las de su rol: MCP o búsqueda web, nunca shell ni escritura del motor. */
+const RESOURCE_TOOL = /^(mcp__[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+|WebFetch|WebSearch)$/
+const SKILL_NAME = /^[A-Za-z0-9_.:-]{1,80}$/
+
+function parseResources(raw: unknown, w: string, errs: string[]): Task['resources'] {
+  if (raw === undefined) return { tools: [], skills: [] }
+  if (!isObj(raw)) {
+    errs.push(`${w}.resources: objeto { tools, skills }`)
+    return { tools: [], skills: [] }
+  }
+  onlyKeys(raw, ['tools', 'skills'], errs, `${w}.resources`)
+  const tools = strList(raw, 'tools', 20, 120, errs, `${w}.resources`)
+  const skills = strList(raw, 'skills', 10, 80, errs, `${w}.resources`)
+  for (const t of tools) if (!RESOURCE_TOOL.test(t) || /^mcp__guildflow__/.test(t)) errs.push(`${w}.resources.tools: "${t}" no es una herramienta MCP o web válida`)
+  for (const s of skills) if (!SKILL_NAME.test(s)) errs.push(`${w}.resources.skills: nombre no válido "${s}"`)
+  return { tools: [...new Set(tools)], skills: [...new Set(skills)] }
+}
+
+/**
+ * Heurística (la API no expone si una herramienta MCP es de solo lectura): por el verbo de su nombre. Las de
+ * solo lectura pueden aprobarse automáticamente; el resto hace sensible el plan.
+ */
+export function readOnlyTool(name: string): boolean {
+  if (name === 'WebFetch' || name === 'WebSearch') return true
+  const verb = name.split('__').pop() ?? ''
+  return /^(get|list|read|search|query|fetch|find|describe|resolve|lookup|show|view|inspect|count|explain|preview)([_-]|$)/i.test(verb) || /(^|[_-])docs?([_-]|$)/i.test(verb)
+}
+
+const INSTALL_KINDS: readonly Install['kind'][] = ['plugin', 'mcp', 'skill', 'software']
+/** Subcomandos del CLI de Claude Code que instalan recursos (sin shell, argv exacto). */
+const INSTALL_ARGV = /^(mcp (add|add-json)|plugin (install|marketplace add))$/
+
+function parseInstalls(raw: unknown, errs: string[]): Install[] {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > 10) {
+    errs.push('plan.installs: lista de hasta 10 recursos')
+    return []
+  }
+  const out: Install[] = []
+  raw.forEach((x, i) => {
+    const w = `installs[${i}]`
+    if (!isObj(x)) return void errs.push(`${w}: debe ser un objeto`)
+    onlyKeys(x, ['kind', 'name', 'reason', 'argv', 'url'], errs, w)
+    const kind = x.kind as Install['kind']
+    if (!INSTALL_KINDS.includes(kind)) errs.push(`${w}.kind: ${INSTALL_KINDS.join(' | ')}`)
+    const name = str(x, 'name', 120, errs, w)
+    const reason = str(x, 'reason', 300, errs, w)
+    const url = str(x, 'url', 500, errs, w, false)
+    if (url && !/^https:\/\/[^\s"'<>]+$/.test(url)) errs.push(`${w}.url: solo https://`)
+    let argv: string[] = []
+    if (kind === 'software') {
+      if (x.argv !== undefined) errs.push(`${w}.argv: el software no se instala solo; se indica a la persona (usa url)`)
+      if (!url) errs.push(`${w}.url: obligatorio para software (de dónde descargarlo)`)
+    } else if (INSTALL_KINDS.includes(kind)) {
+      const a = x.argv
+      if (!Array.isArray(a) || a.length < 3 || a.length > 16 || a.some(s => typeof s !== 'string' || !s || s.length > 300 || /[\0\r\n;&|<>`$]/.test(s)))
+        errs.push(`${w}.argv: argv exacto de "claude" sin caracteres de shell`)
+      else if (exeName(a[0]) !== 'claude' || !INSTALL_ARGV.test(`${a[1]} ${a[2]}${a[2] === 'marketplace' ? ` ${a[3] ?? ''}` : ''}`))
+        errs.push(`${w}.argv: solo "claude mcp add|add-json …" o "claude plugin install|marketplace add …"`)
+      else argv = a as string[]
+    }
+    out.push({ kind, name, reason, argv, url })
+  })
+  return out
 }
 
 export type PlanResult = { ok: true; plan: Plan; warnings: string[] } | { ok: false; errors: string[] }
@@ -389,7 +466,7 @@ export type PlanResult = { ok: true; plan: Plan; warnings: string[] } | { ok: fa
 export function validatePlan(raw: unknown, limits: Limits): PlanResult {
   const errs: string[] = []
   if (!isObj(raw)) return { ok: false, errors: ['el plan debe ser un objeto JSON'] }
-  onlyKeys(raw, ['objective', 'scope', 'constraints', 'risks', 'complexity', 'checks', 'tasks'], errs, 'plan')
+  onlyKeys(raw, ['objective', 'scope', 'constraints', 'risks', 'complexity', 'checks', 'tasks', 'installs'], errs, 'plan')
   const complexity = raw.complexity ?? 'small'
   if (!['small', 'medium', 'large'].includes(complexity as string)) errs.push('plan.complexity: small | medium | large')
   const rawChecks = raw.checks ?? []
@@ -418,6 +495,7 @@ export function validatePlan(raw: unknown, limits: Limits): PlanResult {
     complexity: complexity as Plan['complexity'],
     checks,
     tasks,
+    installs: parseInstalls(raw.installs, errs),
   }
   if (errs.length) return { ok: false, errors: errs }
   const overlap = checkOverlaps(plan)
@@ -430,11 +508,21 @@ export function checkOverlaps(plan: Plan): { errors: string[]; warnings: string[
   const errors: string[] = []
   const warnings: string[] = []
   const entry = (s: string) => parseEntry(s) as PathEntry
+  const deps = (id: string, acc = new Set<string>()): Set<string> => {
+    for (const d of plan.tasks.find(t => t.id === id)?.dependsOn ?? []) if (!acc.has(d)) deps(d, acc.add(d))
+    return acc
+  }
   for (const t of plan.tasks) {
     const used = t.criteria.filter(c => c.check.startsWith('check:')).map(c => c.check.slice(6))
     for (const k of plan.checks.filter(x => used.includes(x.id)))
-      for (const p of k.protects)
+      for (const p of k.protects) {
         for (const w of t.paths) if (overlaps(entry(w), entry(p))) errors.push(`la subtarea ${t.id} podría modificar ${p}, que define la comprobación ${k.id}`)
+        // Especificación ejecutable: otra subtarea puede escribir los tests que certifican a esta, pero solo si
+        // esta depende de ella (los tests quedan revisados y congelados antes de usarse).
+        for (const a of plan.tasks)
+          if (a.id !== t.id && a.paths.some(w => overlaps(entry(w), entry(p))) && !deps(t.id).has(a.id))
+            errors.push(`${a.id} escribe ${p}, que certifica a ${t.id} (comprobación ${k.id}): ${t.id} debe depender de ${a.id}`)
+      }
   }
   for (let i = 0; i < plan.tasks.length; i++)
     for (let j = i + 1; j < plan.tasks.length; j++) {

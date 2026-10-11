@@ -47,7 +47,15 @@ export type Task = {
   maxAttempts: number
   doneWhen: string
   isolation: 'none'
+  /** Herramientas MCP o web y skills que el Artífice puede usar en ESTA subtarea, además de las de su rol. */
+  resources: { tools: string[]; skills: string[] }
 }
+
+/**
+ * Recurso de terceros propuesto por el plan. plugin/mcp/skill: lo instala el sistema tras la aprobación humana,
+ * con el argv exacto aprobado. software: solo se indica a la persona qué descargar (nunca se ejecuta).
+ */
+export type Install = { kind: 'plugin' | 'mcp' | 'skill' | 'software'; name: string; reason: string; argv: string[]; url: string }
 
 export type Plan = {
   objective: string
@@ -57,6 +65,7 @@ export type Plan = {
   complexity: 'small' | 'medium' | 'large'
   checks: CheckDef[]
   tasks: Task[]
+  installs: Install[]
 }
 
 export type Evidence = {

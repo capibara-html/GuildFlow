@@ -1,7 +1,7 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
 // Separada del dominio: el futuro tablón pixel art sustituye esta capa sin tocar machine.ts.
 import type { AgentRecord, Limits, Plan, Quest, Role } from '../types'
-import { elapsedMs, nextStep, progressSummary } from './machine'
+import { agentBudget, elapsedMs, nextStep, progressSummary } from './machine'
 
 type Station = Role | 'maestro' | 'escriba'
 
@@ -103,7 +103,7 @@ export function statusText(q: Quest, now: number): string {
       `${u.costStartUsd !== null ? `≈$${u.costUsd.toFixed(2)} equivalentes (precio API, no lo facturado)` : 'coste no disponible'}${u.ratePercent !== null ? ` · suscripción ${u.ratePercent}%` : ''}` +
       `${u.unavailable.length ? ` · sin datos: ${u.unavailable.join(', ')}` : ''}`,
   )
-  lines.push(`Iteraciones ${q.iterations}/${q.limits.maxQuestIterations} · agentes ${q.agentsSpawned}/${q.limits.maxAgentsPerQuest} · archivos ${q.filesWritten.length}/${q.limits.maxFilesChanged}`)
+  lines.push(`Iteraciones ${q.iterations}/${q.limits.maxQuestIterations} · agentes ${q.agentsSpawned}/${agentBudget(q)} · archivos ${q.filesWritten.length}/${q.limits.maxFilesChanged}`)
   lines.push(`Siguiente: ${nextStep(q)}`)
   return lines.join('\n')
 }
@@ -197,10 +197,19 @@ export const APPROVAL_MAX = 3000
  * (el plan se rechaza y hay que dividirlo): nunca se aprueba algo que la persona no pudo leer entero.
  */
 export function approvalText(id: string, plan: Plan, limits: Limits): string | null {
-  const tasks = plan.tasks.map(t => `${t.id} escribe en [${t.paths.join(', ')}]`).join('; ')
+  const tasks = plan.tasks
+    .map(t => {
+      const r = [...t.resources.tools, ...t.resources.skills.map(x => `skill ${x}`)]
+      return `${t.id} escribe en [${t.paths.join(', ')}]${r.length ? ` usando ${r.join(', ')}` : ''}`
+    })
+    .join('; ')
   const checks = plan.checks.map(k => `${k.id} = ${JSON.stringify(k.argv)} en ${k.cwd} (protege ${k.protects.join(', ') || '—'})`).join('; ') || 'ninguna'
+  const installs = plan.installs.length
+    ? ` — Recursos de terceros: ${plan.installs.map(i => (i.kind === 'software' ? `DESCARGAR TÚ ${i.name} (${i.url})` : `INSTALAR ${i.kind} ${i.name}: ${i.argv.join(' ')}`)).join('; ')}`
+    : ''
+  const agents = Math.min(limits.maxAgentsPerQuest, plan.tasks.reduce((n, t) => n + Math.min(t.maxAttempts, limits.maxAttemptsPerTask) * 2, 0))
   const text =
-    `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks} — ` +
-    `Límites: ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min. ¿Apruebas el plan?`
+    `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs} — ` +
+    `Límites: hasta ${agents} agentes, ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min. ¿Apruebas el plan?`
   return text.length > APPROVAL_MAX ? null : text
 }

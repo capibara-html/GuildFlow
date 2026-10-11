@@ -24,7 +24,7 @@ El Maestro es la sesión principal. El Escriba no es un modelo: es el código de
 | Artífice | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `Edit`, `Write`, `NotebookEdit`, `run_check` | `IMPLEMENTING` |
 | Paladín | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `run_check`, `submit_verdict` | `REVIEWING` |
 
-Ningún rol tiene shell, web ni delegación. El modelo se impone en `agent.spawn`. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
+Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `resources` (herramientas MCP o web y skills aprobadas en el plan) se lanza como **variante** `guildflow:artifice-<subtarea>`: el mod la registra con `$.agent.register`, con esas herramientas añadidas y las skills precargadas, y reescribe el tipo en `agent.spawn`. Así el motor solo le ofrece lo aprobado. El modelo se impone en `agent.spawn`. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
 
 ## 3. Módulos
 
@@ -79,7 +79,7 @@ Un solo hook decide toda llamada a herramienta: `decide()` en `src/policy.ts`, c
    - Si la misión no está trabajando (`isWorking` falso: detenida, bloqueada, en pausa, terminada o esperando aprobación), se permite todo. El Maestro vuelve a ser Claude Code normal.
    - Lectura, coordinación y avisos se permiten.
    - Escrituras en el proyecto: **rechazo con explicación**. Fuera del proyecto: se pregunta.
-   - Shell: lo de solo lectura (`ls`, `dir`, `pwd`, `Get-ChildItem`, `Get-Location`) se permite. Lo sensible se pregunta. El resto se **rechaza con explicación**.
+   - Shell: lo de solo lectura (`ls`, `dir`, `pwd`, `Get-ChildItem`, `Get-Location`) se permite. Un comando de instalación **idéntico** al `argv` aprobado en `plan.installs` también se permite sin diálogo. Cualquier otro comando sensible se pregunta. El resto se **rechaza con explicación**.
    - MCP ajeno (sistema externo): se pregunta.
    - Cualquier otra herramienta: **rechazo con explicación**.
 
@@ -91,8 +91,14 @@ Un solo hook decide toda llamada a herramienta: `decide()` en `src/policy.ts`, c
 
 Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
-1. **`/quest <petición>`** crea la misión en `PLANNING`, abre el panel y envía al Maestro el protocolo.
-2. **El Maestro planifica**, o lanza al Archimago si la misión es compleja. El esquema del plan está en `agents/archimago.md`.
+1. **`/quest <petición>`** es la skill `quest` del plugin (`skills/quest/SKILL.md`): un comando Markdown es un prompt para el modelo y abre el turno del Maestro de forma nativa.
+   - El hook `command.run` del mod va **delante** de la skill: crea la misión en `PLANNING`, abre el panel y deja pasar al prompt.
+   - Si no puede crear la misión (petición vacía, otra misión trabajando), responde sin abrir turno.
+   - Se invoca como `/quest` o `/guildflow:quest`.
+2. **El Maestro decide quién planifica** con una regla explícita de la skill:
+   - Si es un cambio acotado, planifica él.
+   - Si son varios módulos, más de 2 subtareas, arquitectura nueva, una petición sin forma de verificarse o recursos útiles, lanza al Archimago.
+   - El Archimago recibe un **inventario de recursos** de la sesión, generado por el código (`$.tool.list`, `$.command.list`). El esquema del plan, con `resources` e `installs`, está en `agents/archimago.md`.
 3. **`quest submit_plan`:**
    - Se valida estrictamente: campos conocidos, ids, rutas sin comodines ni `..`, comprobaciones con ejecutable de la lista blanca, sin código en línea (`-e`, `--eval`…), sin comandos sensibles.
    - Se calculan los `protects` automáticos y se comprueban los solapes.
@@ -101,12 +107,18 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
    - Por defecto, un diálogo `$.ui.ask` muestra el plan **completo**. Si no cabe en 3000 caracteres, el plan se rechaza: no se presenta recortado. Un "sí" en el chat no vale.
    - Con `autoApprovePlan` activado, el mod aprueba solo planes sin rutas sensibles (`sensitivePlan`) y de complejidad distinta de `large`. La aprobación queda registrada como `by: 'auto'`.
    - Al aprobar se toma la línea base: `HEAD`, archivos ya sucios y huellas de las rutas protegidas.
-5. **`quest start_task`** abre la plaza de **un** Artífice. La ejecución es secuencial: solo se admite `isolation: none`.
-6. **`agent.spawn`** impone modelo, primer plano y un brief generado del plan aprobado. Rechaza la delegación anidada, los tipos ajenos y los lanzamientos sin plaza.
-7. **Al terminar el Artífice**, el mod ejecuta él mismo las comprobaciones (`verifyPending`) y `diff-scope`. Lo que diga el agente no cuenta como evidencia.
-8. **`quest start_review`:** el Paladín emite `submit_verdict` por cada criterio `review`.
-9. **Fallo → `FIXING`:** el siguiente Artífice recibe la evidencia y la firma del fallo.
-10. **`DONE`:** el mod escribe `.guildflow/summary-<id>.md` y pasa a `LOGGED`.
+5. **Instalaciones de terceros** (`plan.installs`). Siempre exigen aprobación humana.
+   - **`plugin`, `mcp`, `skill`:** `argv` exacto de `claude mcp add|add-json` o `claude plugin install|marketplace add`, sin shell. Tras la aprobación, el Maestro las ejecuta tal cual y la guarda las permite sin otro diálogo.
+   - **`software`:** solo `url`. Se le indica a la persona qué descargar; nunca se ejecuta.
+6. **Especificación ejecutable.**
+   - Una subtarea puede escribir los tests que certifican a otras, siempre que esas otras dependan de ella (lo exige `checkOverlaps`).
+   - Cuando termina revisada, el mod recalcula las huellas de esas rutas (`rebaseProtected`) y quedan congeladas para el resto.
+7. **`quest start_task`** abre la plaza de **un** Artífice. Para no inflar el contexto del Maestro, devuelve un resumen y no el brief: el brief completo lo inyecta el mod al lanzar el agente. La ejecución es secuencial: solo se admite `isolation: none`.
+8. **`agent.spawn`** impone modelo, primer plano y un brief generado del plan aprobado. Rechaza la delegación anidada, los tipos ajenos y los lanzamientos sin plaza.
+9. **Al terminar el Artífice**, el mod ejecuta él mismo las comprobaciones (`verifyPending`) y `diff-scope`. Lo que diga el agente no cuenta como evidencia.
+10. **`quest start_review`:** el Paladín emite `submit_verdict` por cada criterio `review`.
+11. **Fallo → `FIXING`:** el siguiente Artífice recibe la evidencia y la firma del fallo.
+12. **`DONE`:** el mod escribe `.guildflow/summary-<id>.md` y pasa a `LOGGED`.
 
 **Continuación autónoma acotada:** `maybeContinue` envía `$.prompt.submit` solo con una misión aprobada que haya progresado desde la última continuación, y como mucho `2 × maxQuestIterations` veces. `classic.Stop` no se usa como motor.
 
@@ -146,7 +158,8 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 | Iteraciones por misión | 8 | 30 |
 | Repeticiones del mismo fallo | 2 | 5 |
 | Rondas sin progreso | 2 | 5 |
-| Agentes por misión / concurrentes | 12 / 3 | 20 / 3 |
+| Agentes por misión: **presupuesto derivado del plan** (Archimagos lanzados + 2 por intento y subtarea, incluidos los intentos extra al reanudar), acotado por el techo | techo 40 | 60 |
+| Agentes concurrentes | 3 | 3 |
 | Tokens por misión (entrada + salida + escritura de caché) | 2 000 000 | 20 000 000 |
 | USD equivalente a API | 25 | 500 |
 | Uso de la suscripción (`rateLimits.percentUsed`) | 90 % | 100 % |
@@ -154,7 +167,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 | Archivos modificados / líneas de diff | 25 / 1500 | 200 / 20 000 |
 | Turnos Archimago / Artífice / Paladín | 25 / 40 / 25 | 60 / 80 / 60 |
 
-- **Contabilidad:** se registra cada petición en `turn.step`. La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
+- **Contabilidad:** se registra cada petición en `turn.step`, con el desglose `input`, `output` y `cacheWrite` y su coste propio (`costDelta`). La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
 - **Interruptor de circuito:** cada 30 s y después de cada petición.
 - **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables` y `autoApprovePlan` (desactivado por defecto).
 
@@ -162,7 +175,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 | Comando | Efecto |
 |---|---|
-| `/quest <petición>` | Abre una misión (archiva una detenida, bloqueada o en pausa) y abre el panel |
+| `/quest <petición>` (skill del plugin) | Abre una misión (archiva una detenida, bloqueada o en pausa), abre el panel y arranca el turno del Maestro |
 | `/quest-status` | Estado completo y abre el panel |
 | `/quest-halt` | Detiene la misión (`HALTED/user`) y aborta el turno del Maestro (`immediate`) |
 | `/quest-resume` | Reanuda tras confirmación humana en un diálogo |
