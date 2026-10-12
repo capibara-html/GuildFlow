@@ -16,6 +16,28 @@ function argv0(def: CheckDef): string {
   return a
 }
 
+/**
+ * argv de `docker run` para una comprobación: sin red ni privilegios, usuario nobody, raíz del contenedor y proyecto
+ * de solo lectura (el código bajo prueba no puede dejar hooks de git ni ajustes de .claude que luego corran en la
+ * máquina de la persona); solo /tmp es escribible. --entrypoint fija el ejecutable: el script de entrada de la imagen
+ * no reinterpreta la orden. null si el ejecutable no tiene imagen: nunca se ejecuta fuera.
+ */
+export function dockerArgv(def: CheckDef, root: string, cwdRel: string, images: Record<string, string>, name: string): string[] | null {
+  const exe = exeName(argv0(def))
+  const image = images[exe]
+  if (!image) return null
+  return [
+    'docker', 'run', '--rm', '--name', name, '--pull=missing', '--network', 'none', '--read-only',
+    '--tmpfs', '/tmp:rw,exec,size=512m,mode=1777', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+    '--user', '65534:65534', '--cpus', '2', '--memory', '2g', '--pids-limit', '512', '--entrypoint', exe,
+    '-e', 'HOME=/tmp', '-e', 'CARGO_TARGET_DIR=/tmp/target', '-e', 'GOCACHE=/tmp/go-cache', '-e', 'GOPATH=/tmp/go', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+    '--mount', `type=bind,source=${root},target=/work,readonly`, '-w', `/work${cwdRel}`,
+    image, ...def.argv.slice(1),
+  ]
+}
+
+const DOCKER_DOWN = /failed to connect to the docker API|Cannot connect to the Docker daemon|error during connect/i
+
 /** Número de tests ejecutados según los formatos habituales; null si la salida no lo dice. */
 export function countTests(out: string): number | null {
   const pats: [RegExp, (m: RegExpMatchArray) => number][] = [
@@ -146,13 +168,30 @@ export async function execute(io: Io, q: Quest, def: CheckDef): Promise<Executio
     return done(problems.length ? { ...x, integrity: problems.join('; ') } : x)
   }
   const t0 = await io.now()
+  const images = q.limits.sandbox ?? null
+  let argv = def.argv
+  let timeoutMs = def.timeoutMs
+  const name = `guildflow-${hash(`${root}|${def.id}|${t0}`).slice(0, 12)}`
+  if (images) {
+    if (/[,"]/.test(root)) return done({ ...base, error: 'sandbox: la ruta del proyecto contiene comas o comillas y no se puede montar' })
+    const d = dockerArgv(def, root, cwd.slice(root.length), images, name)
+    if (!d) return done({ ...base, error: `sandbox: sin imagen Docker para ${exeName(argv0(def))} (opción sandboxImages); no se ejecuta fuera del contenedor` })
+    argv = d
+    timeoutMs += 60_000 // ponytail: margen para arrancar el contenedor (y bajar la imagen la primera vez); prebajar las imágenes lo evita
+  }
   try {
-    const r = await io.run(def.argv, { cwd, timeoutMs: def.timeoutMs })
-    return after({ ...base, cwd, exitCode: r.exitCode, stdout: r.stdout.slice(0, OUTPUT_LIMIT), stderr: r.stderr.slice(0, OUTPUT_LIMIT), durationMs: (await io.now()) - t0 })
+    const r = await io.run(argv, { cwd, timeoutMs })
+    const out = { ...base, argv, cwd, exitCode: r.exitCode, stdout: r.stdout.slice(0, OUTPUT_LIMIT), stderr: r.stderr.slice(0, OUTPUT_LIMIT), durationMs: (await io.now()) - t0 }
+    // 125: docker no pudo arrancar el contenedor (imagen, opciones); 126/127: el ejecutable no está en la imagen;
+    // sin servicio, el CLI sale con 1 y este mensaje: no es un fallo del código bajo prueba
+    if (images && ([125, 126, 127].includes(r.exitCode) || DOCKER_DOWN.test(r.stderr))) return after({ ...out, error: `sandbox Docker (código ${r.exitCode}): ${r.stderr.trim().split(/\r?\n/)[0]?.slice(0, 200) ?? ''}` })
+    return after(out)
   } catch (err) {
     const durationMs = (await io.now()) - t0
-    const timedOut = durationMs >= def.timeoutMs - 100
-    return after({ ...base, cwd, error: timedOut ? null : String(err).slice(0, 300), timedOut, durationMs })
+    const timedOut = durationMs >= timeoutMs - 100
+    // el CLI muerto por tiempo no para el contenedor: se elimina por su nombre
+    if (images) await io.run(['docker', 'rm', '-f', name], { cwd, timeoutMs: 30_000 }).catch(() => undefined)
+    return after({ ...base, argv, cwd, error: timedOut ? null : String(err).slice(0, 300), timedOut, durationMs })
   }
 }
 

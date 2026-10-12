@@ -4,6 +4,7 @@ import type { CheckDef, Quest } from '../types'
 import { agentSpawned, startTask } from '../src/machine'
 import { saveQuest } from '../src/persistence'
 import { countTests, diffScope, execute, fingerprint, judge, parsePorcelain, realOf } from '../src/verification'
+import { DEFAULT_IMAGES, imagesFrom } from '../src/validation'
 import { agent, approved, ok, ROOT } from './fixtures'
 import { memIo } from './memio'
 
@@ -172,5 +173,48 @@ describe('diff-scope', () => {
     const q = withGit(implementing())
     q.limits.maxDiffLines = 2
     expect((await diffScope(m.io, q)).pass).toBe(false)
+  })
+})
+
+describe('sandbox Docker', () => {
+  const seed = { [`${ROOT}/test/math.test.js`]: 'test()', [`${ROOT}/src/math.js`]: 'x' }
+  const sandboxed = (): Quest => {
+    const q = implementing()
+    return { ...q, limits: { ...q.limits, sandbox: imagesFrom(DEFAULT_IMAGES) } }
+  }
+  test('la comprobación corre en un contenedor sin red ni privilegios, con el proyecto de solo lectura', async () => {
+    const m = memIo(seed, () => ({ exitCode: 0, stdout: '# tests 1', stderr: '' }))
+    const x = await execute(m.io, sandboxed(), DEF)
+    expect(x.judged.pass).toBe(true)
+    const a = m.runs[0]!.argv
+    expect(a.slice(0, 2)).toEqual(['docker', 'run'])
+    for (const f of ['--network none', '--read-only', '--cap-drop ALL', '--security-opt no-new-privileges', '--user 65534:65534']) expect(a.join(' ')).toContain(f)
+    expect(a).toContain(`type=bind,source=${ROOT},target=/work,readonly`)
+    expect(a.join(' ')).toContain('--entrypoint node')
+    expect(a.slice(-3)).toEqual(['node:22-alpine', '--test', 'test/'])
+    expect(x.argv).toEqual(a) // el registro guarda lo que se ejecutó de verdad
+  })
+  test('sin imagen para el ejecutable no se ejecuta en ningún sitio', async () => {
+    const m = memIo(seed)
+    const x = await execute(m.io, sandboxed(), { ...DEF, argv: ['git', 'diff', '--check'] })
+    expect(x.judged.pass).toBe(false)
+    expect(x.judged.reason).toContain('sin imagen Docker para git')
+    expect(m.runs.length).toBe(0)
+  })
+  test('Docker parado (125) → FAIL con el motivo; nunca se repite fuera del contenedor', async () => {
+    const m = memIo(seed, () => ({ exitCode: 125, stdout: '', stderr: 'docker: Cannot connect to the Docker daemon\nmore' }))
+    const x = await execute(m.io, sandboxed(), DEF)
+    expect(x.judged.pass).toBe(false)
+    expect(x.judged.reason).toContain('sandbox Docker (código 125): docker: Cannot connect to the Docker daemon')
+    expect(m.runs.length).toBe(1)
+    const down = memIo(seed, () => ({ exitCode: 1, stdout: '', stderr: 'failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine' }))
+    expect((await execute(down.io, sandboxed(), DEF)).judged.reason).toContain('sandbox Docker (código 1): failed to connect')
+  })
+  test('tiempo agotado: el contenedor se elimina por su nombre', async () => {
+    const m = memIo(seed, () => 'timeout')
+    const x = await execute(m.io, sandboxed(), DEF)
+    expect(x.judged.pass).toBe(false)
+    const name = m.runs[0]!.argv[m.runs[0]!.argv.indexOf('--name') + 1]
+    expect(m.runs[1]!.argv).toEqual(['docker', 'rm', '-f', name])
   })
 })

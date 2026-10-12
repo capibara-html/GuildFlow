@@ -59,6 +59,8 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `trustedTools` | Context7 + `WebSearch` | Herramientas de recursos que no impiden la aprobación automática |
 | `archimagoEffort` | `high` | `xhigh` para misiones arquitectónicas |
 | `allowedExecutables` | ver arriba | Lista separada por comas; nunca `.cmd`, `.bat`, `.ps1` ni `.sh` |
+| `sandbox` | `none` | `docker`: cada comprobación corre en un contenedor sin red, con el proyecto de solo lectura (solo `/tmp` escribible). Si Docker no responde, la comprobación falla: nunca se ejecuta fuera. Requiere Docker funcionando; conviene descargar antes las imágenes (`docker pull node:22-alpine`). Las dependencias nativas compiladas para Windows (`node_modules`) no cargan en Linux |
+| `sandboxImages` | node, python, go, cargo, deno, bun (Alpine) | `ejecutable=imagen` separados por comas. Un ejecutable sin imagen no se acepta en las comprobaciones con `sandbox: docker` |
 
 Los valores fuera de rango se acotan a los topes: un límite no se puede desactivar.
 

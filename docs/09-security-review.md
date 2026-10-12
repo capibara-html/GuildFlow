@@ -9,6 +9,20 @@
 - **Mitigaciones reales:** el Artífice es un modelo con instrucciones explícitas, y en las dos misiones en vivo se negó a manipular la evaluación. También hay aprobación del plan (humana o automática restringida), rutas de escritura mínimas, verificación de integridad y revisión del Paladín.
 - **Recomendación:** usar GuildFlow en repositorios de confianza. Para código no confiable, ejecutar Claude Code dentro de un contenedor o máquina virtual. Esta es la **limitación residual principal** y no se puede resolver desde un plugin.
 
+**Fase 4: sandbox de las comprobaciones (`sandbox: docker`, opcional).** Con esta opción, cada comprobación del plan corre con `docker run`:
+- sin red (`--network none`), sin capacidades, con `no-new-privileges`, como el usuario `nobody` y con límites de CPU, memoria y procesos;
+- con la raíz del contenedor y **el proyecto montados en solo lectura**: el código bajo prueba no puede reescribir sus tests ni dejar `.git/hooks` o ajustes de `.claude/` que luego corran en la máquina; solo `/tmp` es escribible;
+- con el ejecutable fijado como `--entrypoint`, para que el script de entrada de la imagen no reinterprete la orden.
+
+Falla en cerrado: un ejecutable sin imagen no se aprueba en el plan y no se ejecuta; si Docker no responde, la comprobación falla con ese motivo y nunca se repite fuera. Al agotarse el tiempo, el contenedor se elimina por su nombre.
+
+**Lo que sigue fuera del sandbox:**
+- el servidor de vista previa de las subtareas visuales;
+- el `git` del propio mod (no ejecuta código del proyecto);
+- el servicio de Docker, que es privilegiado en la máquina.
+
+Por defecto sigue en `none`, porque exige tener Docker funcionando. Probado en vivo en `10` §3 (V21).
+
 ## 2. Modelo de amenazas
 
 | Actor o vector | Qué podría intentar | Control |

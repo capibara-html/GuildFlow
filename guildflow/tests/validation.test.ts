@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
+import { DEFAULT_IMAGES, imagesFrom, limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
 import { LIMITS, RAW_PLAN } from './fixtures'
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -124,6 +124,19 @@ describe('comandos y límites', () => {
     expect(l.tokenBudgetPerQuest).toBe(10_000)
     expect(l.allowedExecutables).toEqual(['node', 'git'])
     expect(limitsFrom({}).maxDiffLines).toBe(1500)
+  })
+  test('sandbox: apagado por defecto; con docker, imágenes por ejecutable sin entradas que parezcan flags', () => {
+    expect(limitsFrom({}).sandbox).toBeNull()
+    expect(limitsFrom({ sandbox: 'docker' }).sandbox?.node).toBe('node:22-alpine')
+    expect(imagesFrom('node=-v,python=python:3.12, git = alpine/git:2 ,x=,=y')).toEqual({ python: 'python:3.12', git: 'alpine/git:2' })
+  })
+  test('con sandbox, una comprobación cuyo ejecutable no tiene imagen no se aprueba', () => {
+    const b = clone(RAW_PLAN) as Record<string, any>
+    b.checks[0].argv = ['git', 'diff', '--check']
+    const sandboxed = { ...LIMITS, sandbox: imagesFrom(DEFAULT_IMAGES) }
+    const bad = validatePlan(b, sandboxed)
+    expect(bad.ok ? '' : bad.errors.join()).toContain('no tiene imagen para "git"')
+    expect(validatePlan(RAW_PLAN, sandboxed).ok).toBe(true)
   })
 })
 

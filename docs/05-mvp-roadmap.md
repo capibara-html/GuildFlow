@@ -73,7 +73,7 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 
 ### Fase 4: Endurecimiento
 
-- Sandbox opcional: ejecutar `run_check` dentro de un contenedor o máquina virtual configurable. Es el riesgo residual principal de `09` §1.
+- ~~Sandbox opcional: ejecutar `run_check` dentro de un contenedor o máquina virtual configurable.~~ **Hecho (2026-10-12):** opción `sandbox: docker` (ver `09` §1 y `10` V21).
 - Lista blanca de extensiones de código para `autoApprovePlan`, en lugar de la lista negra de rutas sensibles.
 - Worktrees para Artífices en paralelo + integración en serie.
 - Escriba-LLM opcional (Haiku) para resúmenes.

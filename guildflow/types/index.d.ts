@@ -148,6 +148,8 @@ export type Limits = {
   maxTurns: Record<Role, number>
   archimagoEffort: Effort
   allowedExecutables: string[]
+  /** Comprobaciones en Docker: imagen por ejecutable; null = en la máquina de la persona. Ausente en misiones antiguas. */
+  sandbox?: Record<string, string> | null
   /** Herramientas de recursos que la persona confía para aprobar planes automáticamente (lista explícita). */
   trustedTools: string[]
   /** Modelo del Maestro mientras la misión trabaja; null = el que elija la persona en la sesión. */

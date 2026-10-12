@@ -181,6 +181,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - **Contabilidad:** se registra cada petición en `turn.step`, con el desglose `input`, `output` y `cacheWrite` y su coste propio (`costDelta`). La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
 - **Interruptor de circuito:** cada 30 s y después de cada petición.
+- **Sandbox (Fase 4):** `sandbox` (`none` por defecto o `docker`) y `sandboxImages` (`ejecutable=imagen`). Con `docker`, `execute` envuelve cada comprobación con `dockerArgv`, y `validatePlan` rechaza los ejecutables sin imagen. La opción queda congelada en los límites de la misión. Detalle y garantías en `09` §1.
 - **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables`, `autoApprovePlan` (desactivado por defecto) y `trustedTools`, las herramientas de recursos que no impiden la aprobación automática; por defecto Context7 y `WebSearch`.
 
 ## 10. Comandos y UI

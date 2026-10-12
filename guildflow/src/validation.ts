@@ -217,6 +217,18 @@ const DEFAULTS: Record<string, number> = {
   maxTurnsPaladin: 25,
 }
 const DEFAULT_EXES = 'node,git,tsc,python,py,pytest,cargo,go,dotnet,deno,bun'
+/** Imágenes del sandbox Docker por ejecutable; un ejecutable sin imagen no puede ser una comprobación con sandbox. */
+export const DEFAULT_IMAGES = 'node=node:22-alpine,python=python:3.12-alpine,go=golang:1.23-alpine,cargo=rust:1-alpine,deno=denoland/deno:alpine,bun=oven/bun:alpine'
+
+/** "exe=imagen,..." → mapa; descarta entradas mal formadas (una imagen nunca empieza por "-": no es un flag de docker). */
+export function imagesFrom(raw: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of raw.split(',')) {
+    const [exe = '', image = ''] = pair.split('=').map(x => x.trim())
+    if (/^[a-z0-9._-]{1,32}$/.test(exe.toLowerCase()) && /^[a-z0-9][a-z0-9._/:@-]{0,199}$/i.test(image)) out[exe.toLowerCase()] = image
+  }
+  return out
+}
 /** Confianza explícita para la aprobación automática (la API no dice si una herramienta MCP es de solo lectura). WebFetch no: puede sacar datos en la URL. */
 const DEFAULT_TRUSTED = 'mcp__context7__resolve-library-id,mcp__context7__query-docs,WebSearch'
 
@@ -255,6 +267,7 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     maxTurns: { archimago: n('maxTurnsArchimago'), artifice: n('maxTurnsArtifice'), paladin: n('maxTurnsPaladin') },
     archimagoEffort: effort,
     allowedExecutables: exes,
+    sandbox: options.sandbox === 'docker' ? imagesFrom(String(options.sandboxImages ?? DEFAULT_IMAGES)) : null,
     maestroModel,
     trustedTools: String(options.trustedTools ?? DEFAULT_TRUSTED)
       .split(',')
@@ -318,6 +331,7 @@ function parseCheck(raw: unknown, i: number, limits: Limits, errs: string[]): Ch
   const exe = exeName(argv[0])
   if (/\.(cmd|bat|ps1|sh)$/.test(exe)) errs.push(`${w}.argv[0]: ${argv[0]} necesita un shell; declara el intérprete (por ejemplo node) y el script`)
   else if (!limits.allowedExecutables.includes(exe)) errs.push(`${w}.argv[0]: ejecutable no autorizado "${exe}" (permitidos: ${limits.allowedExecutables.join(', ')})`)
+  else if (limits.sandbox && !limits.sandbox[exe]) errs.push(`${w}.argv[0]: el sandbox Docker no tiene imagen para "${exe}" (con imagen: ${Object.keys(limits.sandbox).join(', ') || 'ninguno'}; opción sandboxImages)`)
   const inline = (argv as string[]).slice(1).find(a => INLINE_CODE.test(a))
   if (inline) errs.push(`${w}.argv: "${inline}" ejecuta código o configuración en línea; declara un script del proyecto (quedará protegido)`)
   if (exe === 'deno' && argv[1] === 'eval') errs.push(`${w}.argv: deno eval no está permitido`)
