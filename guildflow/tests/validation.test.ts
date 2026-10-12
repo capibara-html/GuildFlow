@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { autoUnwritable, DEFAULT_IMAGES, imagesFrom, limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
+import { autoUnwritable, DEFAULT_IMAGES, taskEffort, imagesFrom, limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
 import { LIMITS, RAW_PLAN } from './fixtures'
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -116,6 +116,20 @@ describe('comandos y límites', () => {
       b.checks[0].argv = argv
       expect(errorsOf(b).join()).toMatch(/en línea|deno eval/)
     }
+  })
+  test('esfuerzo por subtarea: low a xhigh u omitido; max no; el Maestro en medium salvo inherit', () => {
+    const b = clone(RAW_PLAN) as Record<string, any>
+    b.tasks[0].effort = 'xhigh'
+    const v = validatePlan(b, LIMITS)
+    expect(v.ok && v.plan.tasks[0]!.effort).toBe('xhigh')
+    b.tasks[0].effort = 'max'
+    expect(errorsOf(b).join()).toContain('.effort: low | medium | high | xhigh')
+    expect(taskEffort({ complexity: 'small' }, {})).toBe('medium')
+    expect(taskEffort({ complexity: 'large' }, {})).toBe('high')
+    expect(taskEffort({ complexity: 'large' }, { effort: 'low' })).toBe('low')
+    expect(limitsFrom({}).maestroEffort).toBe('medium')
+    expect(limitsFrom({ maestroEffort: 'inherit' }).maestroEffort).toBeNull()
+    expect(limitsFrom({ maestroEffort: 'max' }).maestroEffort).toBe('medium')
   })
   test('userConfig se acota a los topes del plugin', () => {
     const l = limitsFrom({ maxAttemptsPerTask: 999, maxConcurrentAgents: 50, tokenBudgetPerQuest: -1, allowedExecutables: 'node, EVIL.cmd ,git' })

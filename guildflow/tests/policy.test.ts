@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
 import { agentSpawned, approve, block, halt, pause, startTask } from '../src/machine'
-import { decide, TOOL, type Facts } from '../src/policy'
+import { decide, effortFor, TOOL, type Facts } from '../src/policy'
 import { agent, approved, ok, planned, RAW_PLAN, ROOT } from './fixtures'
 
 function implementing(): Quest {
@@ -117,6 +117,17 @@ describe('Maestro con la misión sin trabajar', () => {
   test('los agentes del gremio siguen sin actuar con la misión detenida', () => {
     const q = ok(halt(implementing(), 'user', 'alto', 4))
     expect(decide(facts(q, { tool: 'Read', caller: asArt, reads: [`${ROOT}/src/math.js`] })).kind).toBe('deny')
+  })
+})
+
+describe('esfuerzo por rol', () => {
+  test('Artífice: el de su subtarea o el de la complejidad; Paladín siempre high; Archimago según la opción', () => {
+    const q = approved() // complejidad small
+    expect(effortFor(q, 'artifice', 't1')).toBe('medium')
+    expect(effortFor({ ...q, plan: { ...q.plan!, complexity: 'medium' } }, 'artifice', 't1')).toBe('high')
+    expect(effortFor({ ...q, plan: { ...q.plan!, tasks: [{ ...q.plan!.tasks[0]!, effort: 'xhigh' }] } }, 'artifice', 't1')).toBe('xhigh')
+    expect(effortFor({ ...q, plan: { ...q.plan!, tasks: [{ ...q.plan!.tasks[0]!, effort: 'low' }] } }, 'paladin', 't1')).toBe('high')
+    expect(effortFor({ ...q, limits: { ...q.limits, archimagoEffort: 'xhigh' } }, 'archimago', null)).toBe('xhigh')
   })
 })
 

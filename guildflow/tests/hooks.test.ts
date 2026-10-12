@@ -335,6 +335,22 @@ describe('Maestro en Sonnet y planificación del Archimago', () => {
     expect(seen).toEqual(['claude-sonnet-5-5'])
   })
 
+  test('cada petición sale con el esfuerzo de su rol: Maestro medium, Artífice el de su subtarea', async ($, on) => {
+    const seen: { agent: string; effort: unknown }[] = []
+    world(on, { quest: implementing() })
+    on('turn.step', async function* (_$, e) {
+      seen.push({ agent: String(e.agentId ?? 'maestro'), effort: e.effort })
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null } as never
+    })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'status' })
+    for (const agentId of [undefined, 'art'])
+      for await (const _ of $.turn.step({ turnId: 'tt', index: 0, model: 'claude-opus-5-5', effort: 'high', messageCount: 1, ...(agentId ? { agentId } : {}) } as never) as AsyncIterable<unknown>) void _
+    expect(seen).toEqual([
+      { agent: 'maestro', effort: 'medium' },
+      { agent: 'art', effort: 'medium' }, // plan small sin effort → medium
+    ])
+  })
+
   test('maestroModel inherit respeta el modelo de la sesión', () => {
     expect(limitsFrom({}).maestroModel).toBe('claude-sonnet-5-5')
     expect(limitsFrom({ maestroModel: 'inherit' }).maestroModel).toBeNull()

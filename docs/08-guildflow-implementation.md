@@ -19,10 +19,12 @@ El Maestro es la sesión principal. El Escriba no es un modelo: es el código de
 
 | Rol | Modelo impuesto | Esfuerzo | Herramientas permitidas (lista blanca en `src/policy.ts`) | Fase en que actúa |
 |---|---|---|---|---|
-| Maestro | **`claude-sonnet-5-5` mientras la misión trabaja** (`maestroModel`; `inherit` = el de la sesión) | el de la sesión | Todas, filtradas por la política del §5 mientras la misión trabaja | Siempre |
+| Maestro | **`claude-sonnet-5-5` mientras la misión trabaja** (`maestroModel`; `inherit` = el de la sesión) | **`medium` mientras la misión trabaja** (`maestroEffort`; `inherit` = el de la sesión) | Todas, filtradas por la política del §5 mientras la misión trabaja | Siempre |
 | Archimago | `claude-opus-5-5` | `high` (o `xhigh` por `userConfig`) | `Read`, `Grep`, `Glob` | `PLANNING` |
-| Artífice | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `Edit`, `Write`, `NotebookEdit`, `run_check` | `IMPLEMENTING` |
-| Paladín | `claude-sonnet-5-5` | `high` | `Read`, `Grep`, `Glob`, `run_check`, `submit_verdict` | `REVIEWING` |
+| Artífice | `claude-sonnet-5-5` (u Opus por subtarea) | **por subtarea:** `effort` del plan (`low`…`xhigh`); sin él, `small` → `medium` y `medium`/`large` → `high` (`taskEffort`) | `Read`, `Grep`, `Glob`, `Edit`, `Write`, `NotebookEdit`, `run_check` | `IMPLEMENTING` |
+| Paladín | `claude-sonnet-5-5` | `high` siempre: una revisión floja es el fallo más caro | `Read`, `Grep`, `Glob`, `run_check`, `submit_verdict` | `REVIEWING` |
+
+El esfuerzo se impone en cada petición (`turn.step`, `effortFor` en `src/policy.ts`), no solo en el frontmatter, y el diálogo de aprobación muestra el de cada subtarea. Antes de la Fase 4 era `high` fijo para los tres subagentes y el Maestro seguía el de la sesión.
 
 Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `resources` (herramientas MCP o web y skills aprobadas en el plan) se lanza como **variante** `guildflow:artifice-<subtarea>`: el mod la registra con `$.agent.register`, con esas herramientas añadidas y las skills precargadas, y reescribe el tipo en `agent.spawn`. Así el motor solo le ofrece lo aprobado. El modelo se impone en `agent.spawn`.
 

@@ -3,7 +3,7 @@
 // docs/09-security-review.md y fijado por tests/policy.test.ts.
 import type { Effort, Quest, Role } from '../types'
 import { isApproved, isStopped, isWorking } from './machine'
-import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, autoUnwritable, AUTO_EXTS, type PathEntry } from './validation'
+import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, autoUnwritable, AUTO_EXTS, taskEffort, type PathEntry } from './validation'
 
 export const PLUGIN = 'guildflow'
 export const TOOL = {
@@ -124,6 +124,17 @@ export function effectivePreview(q: Quest): { argv: string[]; port: number } | n
 }
 
 /** Modelo de un rol para una subtarea (el Artífice puede ir con Opus en subtareas creativas). */
+/**
+ * Esfuerzo por rol: el Archimago, el de la opción archimagoEffort; el Paladín, siempre high (una revisión floja
+ * es el fallo más caro del ciclo); el Artífice, el de su subtarea (taskEffort).
+ */
+export function effortFor(q: Quest, role: Role, taskId: string | null): Effort {
+  if (role === 'archimago') return q.limits.archimagoEffort
+  if (role === 'paladin') return 'high'
+  const task = q.plan?.tasks.find(t => t.id === taskId)
+  return q.plan && task ? taskEffort(q.plan, task) : ROLES.artifice.effort
+}
+
 export function modelFor(q: Quest, role: Role, taskId: string | null): string {
   if (role !== 'artifice') return ROLES[role].model
   return q.plan?.tasks.find(t => t.id === taskId)?.model === 'opus' ? 'claude-opus-5-5' : ROLES.artifice.model

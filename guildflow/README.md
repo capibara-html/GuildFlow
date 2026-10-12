@@ -64,6 +64,7 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |
 | `theme` | `gremio` | Textos con temática de rol: cabecera temática + dato llano y voces de los roles. `sobrio` deja solo el dato |
+| `maestroEffort` | `medium` | Esfuerzo del Maestro mientras la misión trabaja (solo coordina). `inherit` usa el de la sesión. El de cada Artífice lo pone el plan por subtarea (`effort`) o, si falta, la complejidad del plan (`small` → `medium`, el resto → `high`); el Paladín revisa siempre en `high` |
 | `maestroModel` | `claude-sonnet-5-5` | Modelo del Maestro mientras la misión trabaja. Todo plan de más de una subtarea lo traza el Archimago (Opus). `inherit` usa el modelo que tengas en la sesión |
 | `trustedTools` | Context7 + `WebSearch` | Herramientas de recursos que no impiden la aprobación automática |
 | `archimagoEffort` | `high` | `xhigh` para misiones arquitectónicas |

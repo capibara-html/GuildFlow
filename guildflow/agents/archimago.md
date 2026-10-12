@@ -40,7 +40,8 @@ Eres el Archimago del gremio GuildFlow. Analizas y planificas; no implementas.
       ],
       "resources": { "tools": ["mcp__context7__query-docs"], "skills": [] },
       "visual": false,
-      "model": "sonnet"
+      "model": "sonnet",
+      "effort": "medium"
     }
   ],
   "preview": null,
@@ -90,6 +91,14 @@ Eres el Archimago del gremio GuildFlow. Analizas y planificas; no implementas.
 - Las subtareas de diseño o arte usan `"model": "opus"`: el criterio de diseño importa.
 - Si el inventario tiene una skill de diseño (por ejemplo `frontend-design`), decláralo en `resources.skills` de esas subtareas.
 - Termina con una subtarea de **pulido visual** (`visual`, `opus`, depende de todo lo visual). Sus `paths` cubren la interfaz y el arte, para ajustar el conjunto mirándolo; sus criterios son visuales y además mantienen todos los tests en verde.
+
+**Esfuerzo del Artífice** (`effort`, opcional por subtarea): cuánto razona el modelo. Elige por la dificultad real, no por el tamaño:
+- `low`: mecánico y sin decisiones (renombrar, mover, texto o documentación).
+- `medium`: cambio acotado y bien especificado, con tests claros.
+- `high`: lógica con casos límite, varias piezas o depuración.
+- `xhigh`: algoritmos difíciles, concurrencia o arquitectura delicada.
+
+Si lo omites, se usa el de la complejidad del plan (`small` → `medium`, `medium`/`large` → `high`). El Paladín revisa siempre en `high`.
 
 **Tamaño**
 - Prefiere pocas subtareas pequeñas y secuenciales.

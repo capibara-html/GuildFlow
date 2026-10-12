@@ -1,6 +1,6 @@
 // Validación de entradas no confiables (plan del modelo, argumentos de herramientas, rutas) y utilidades puras.
 // Todo lo que no se puede demostrar válido se rechaza.
-import type { CheckDef, Criterion, Effort, Install, Limits, Plan, Preview, Task } from '../types'
+import type { CheckDef, Criterion, Effort, Install, Limits, Plan, Preview, Task, TaskEffort } from '../types'
 
 /** Hash no criptográfico (2×FNV-1a 32): detecta cambios accidentales, no adversarios. */
 export function hash(s: string): string {
@@ -299,6 +299,7 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     allowedExecutables: exes,
     sandbox: options.sandbox === 'docker' ? imagesFrom(String(options.sandboxImages ?? DEFAULT_IMAGES)) : null,
     maestroModel,
+    maestroEffort: options.maestroEffort === 'inherit' ? null : TASK_EFFORTS.includes(options.maestroEffort as TaskEffort) ? (options.maestroEffort as TaskEffort) : 'medium',
     autoApproveExtensions: autoExts(String(options.autoApproveExtensions ?? DEFAULT_AUTO_EXTS)),
     trustedTools: String(options.trustedTools ?? DEFAULT_TRUSTED)
       .split(',')
@@ -393,13 +394,20 @@ function parseCheck(raw: unknown, i: number, limits: Limits, errs: string[]): Ch
   }
 }
 
+const TASK_EFFORTS: readonly TaskEffort[] = ['low', 'medium', 'high', 'xhigh']
+
+/** Esfuerzo del Artífice de una subtarea: el que pide el plan o, si no, small → medium y medium/large → high. */
+export const taskEffort = (plan: Pick<Plan, 'complexity'>, task: Pick<Task, 'effort'>): TaskEffort => task.effort ?? (plan.complexity === 'small' ? 'medium' : 'high')
+
 function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], limits: Limits, errs: string[]): Task | null {
   const w = `tasks[${i}]`
   if (!isObj(raw)) {
     errs.push(`${w}: debe ser un objeto`)
     return null
   }
-  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation', 'resources', 'visual', 'model'], errs, w)
+  onlyKeys(raw, ['id', 'title', 'description', 'dependsOn', 'role', 'paths', 'criteria', 'maxAttempts', 'doneWhen', 'isolation', 'resources', 'visual', 'model', 'effort'], errs, w)
+  const effort = raw.effort
+  if (effort !== undefined && !TASK_EFFORTS.includes(effort as TaskEffort)) errs.push(`${w}.effort: ${TASK_EFFORTS.join(' | ')} (u omitido: lo decide la complejidad del plan)`)
   const visual = raw.visual ?? false
   if (typeof visual !== 'boolean') errs.push(`${w}.visual: true | false`)
   const model = raw.model ?? 'sonnet'
@@ -453,6 +461,7 @@ function parseTask(raw: unknown, i: number, seen: string[], checks: CheckDef[], 
     resources: parseResources(raw.resources, w, errs),
     visual: visual === true,
     model: model === 'opus' ? 'opus' : 'sonnet',
+    ...(TASK_EFFORTS.includes(effort as TaskEffort) ? { effort: effort as TaskEffort } : {}),
   }
   if (id) seen.push(id)
   return task

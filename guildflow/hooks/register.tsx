@@ -7,7 +7,7 @@ import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
-import { ARTIFICE_SYSTEM, decide, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
+import { ARTIFICE_SYSTEM, decide, effortFor, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
 import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
 import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
@@ -573,7 +573,7 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
     tools: [...toolsFor(q, role)],
     skills: role === 'artifice' ? task.resources.skills : [],
     model: modelFor(q, role, task.id),
-    effort: ROLES[role].effort,
+    effort: effortFor(q, role, task.id),
     maxTurns: turnsFor(q, role, task.id),
   }
   // La huella liga la variante a ESTA misión y ESTE plan aprobado: otra misión u otro plan con el mismo id de
@@ -889,8 +889,7 @@ export const register: Register = (on, options) => {
           yield { kind: 'stop', stopReason: 'end_turn', usage: null }
           return { turnId: e.turnId, index: e.index, answer: text, toolUses: [], stopReason: 'end_turn', usage: null }
         }
-        const rule = ROLES[role]
-        const effort = role === 'archimago' ? q.limits.archimagoEffort : rule.effort
+        const effort = effortFor(q, role, rec?.taskId ?? q.activeTask)
         const model = modelFor(q, role, rec?.taskId ?? q.activeTask)
         if (e.model !== model || e.effort !== effort) {
           sent = { ...e, model, effort }
@@ -898,11 +897,12 @@ export const register: Register = (on, options) => {
         }
       }
     }
-    // Maestro: mientras la misión trabaja, coordina con el modelo configurado (Sonnet por defecto)
+    // Maestro: mientras la misión trabaja, coordina con el modelo y el esfuerzo configurados (Sonnet y medium por defecto)
     const maestro = q.limits.maestroModel
-    if (!e.agentId && maestro && M.isWorking(q) && e.model !== maestro) {
-      sent = { ...e, model: maestro }
-      if (e.index === 0) await note($, 'turn.step.enforced', { agentId: null, role: 'maestro', seenModel: e.model, model: maestro })
+    const maestroEffort = q.limits.maestroEffort ?? null
+    if (!e.agentId && M.isWorking(q) && ((maestro && e.model !== maestro) || (maestroEffort && e.effort !== maestroEffort))) {
+      sent = { ...e, ...(maestro ? { model: maestro } : {}), ...(maestroEffort ? { effort: maestroEffort } : {}) }
+      if (e.index === 0) await note($, 'turn.step.enforced', { agentId: null, role: 'maestro', seenModel: e.model, seenEffort: e.effort ?? null, model: sent.model, effort: sent.effort ?? null })
     }
     const r = yield* next(sent)
     // Con la misión detenida, terminada o esperando aprobación, lo que hace la sesión principal no es de la misión

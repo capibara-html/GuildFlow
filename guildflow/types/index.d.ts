@@ -53,7 +53,12 @@ export type Task = {
   visual: boolean
   /** Modelo del Artífice de esta subtarea: sonnet (por defecto) u opus para trabajo creativo o de diseño. */
   model: 'sonnet' | 'opus'
+  /** Esfuerzo del Artífice de esta subtarea; ausente = el de la complejidad del plan (taskEffort). */
+  effort?: TaskEffort
 }
+
+/** Esfuerzos que un plan puede pedir para una subtarea (max no: coste alto y rendimiento decreciente). */
+export type TaskEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
 /** Servidor local para ver la interfaz (lo arranca el navegador integrado con su launch.json). */
 export type Preview = { argv: string[]; port: number }
@@ -156,6 +161,8 @@ export type Limits = {
   autoApproveExtensions?: string[]
   /** Modelo del Maestro mientras la misión trabaja; null = el que elija la persona en la sesión. */
   maestroModel: string | null
+  /** Esfuerzo del Maestro mientras la misión trabaja; null = el de la sesión. Ausente en misiones antiguas. */
+  maestroEffort?: TaskEffort | null
 }
 
 export type Slot = { role: Role; taskId: string | null; attempt: number }

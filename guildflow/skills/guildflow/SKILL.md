@@ -33,7 +33,8 @@ Todo lo demás lo encadenas tú, **en el mismo turno**, hasta terminar la misió
 2. **Elegir quién planifica.** Durante la misión coordinas con Sonnet; la planificación difícil es del Archimago (Opus).
    - **Planificas tú** solo si el trabajo cabe en **una** subtarea con criterios claros.
    - **Lanzas `guildflow:archimago`** (solo en PLANNING) en cualquier otro caso: más de una subtarea, varios módulos, arquitectura nueva, una petición sin forma de verificarse o recursos útiles (MCP, skills). El mod rechaza un plan de más de una subtarea si no ha terminado un Archimago en la misión.
-   - Revisa el plan del Archimago antes de enviarlo. El esquema está en su definición: `checks`, `tasks` con `dependsOn`, `paths`, `criteria`, `resources` e `installs`.
+   - Revisa el plan del Archimago antes de enviarlo. El esquema está en su definición: `checks`, `tasks` con `dependsOn`, `paths`, `criteria`, `resources`, `effort` e `installs`.
+   - `effort` por subtarea (`low`, `medium`, `high` o `xhigh`) según su dificultad real. Si se omite, decide la complejidad del plan (`small` → `medium`). El Paladín revisa siempre en `high`.
 3. **Verificabilidad.** Cada criterio se demuestra con `check:<id>` o `review`, y cada subtarea lleva al menos un `review`. Si no hay tests que verifiquen la petición, el plan empieza con una **subtarea de especificación ejecutable**:
    - un Artífice escribe los tests;
    - el Paladín los revisa contra la petición;

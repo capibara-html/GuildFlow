@@ -3,6 +3,7 @@
 import type { AgentRecord, Limits, Plan, Quest, TaskStatus } from '../types'
 import { agentBudget, elapsedMs, isActive, isStopped, nextStep, progressSummary } from './machine'
 import { scene, type Pose, type Station } from './sprites'
+import { taskEffort } from './validation'
 import { LABELS, stateTitle, voice, type Theme } from './theme'
 
 export const STATIONS: Record<Station, { name: string; place: string; glyph: string; color: string }> = {
@@ -362,7 +363,7 @@ export function approvalText(id: string, plan: Plan, limits: Limits): string | n
   const tasks = plan.tasks
     .map(t => {
       const r = [...t.resources.tools, ...t.resources.skills.map(x => `skill ${x}`)]
-      const tags = [t.visual ? 'visual: con navegador local' : '', t.model === 'opus' ? 'Artífice Opus' : ''].filter(Boolean)
+      const tags = [t.visual ? 'visual: con navegador local' : '', t.model === 'opus' ? 'Artífice Opus' : '', `esfuerzo ${taskEffort(plan, t)}`].filter(Boolean)
       return `${t.id}${tags.length ? ` (${tags.join(', ')})` : ''} escribe en [${t.paths.join(', ')}]${r.length ? ` usando ${r.join(', ')}` : ''}`
     })
     .join('; ')
