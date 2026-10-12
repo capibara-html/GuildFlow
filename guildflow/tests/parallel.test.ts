@@ -2,8 +2,9 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
 import { agentFinished, agentSpawned, benchConflict, integrate, nextStep, parallelCandidates, recover, spawnBlocker, startParallel, startTask, submitPlan } from '../src/machine'
+import { decide } from '../src/policy'
 import { validatePlan } from '../src/validation'
-import { agent, approved, LIMITS, ok, RAW_PLAN } from './fixtures'
+import { agent, approved, LIMITS, ok, RAW_PLAN, ROOT } from './fixtures'
 
 /** Plan con t1 y t2 independientes (rutas disjuntas), t3 que pisa las rutas de t1 y t4 visual. */
 function plan() {
@@ -86,5 +87,30 @@ describe('Artífices en paralelo (talleres)', () => {
     const v = validatePlan(plan(), LIMITS)
     if (!v.ok) throw new Error(v.errors.join())
     expect(ok(submitPlan({ ...q, state: 'BLOCKED' }, v.plan, 6)).benches).toEqual({})
+  })
+})
+
+describe('política del taller', () => {
+  const write = (q: Quest, agentId: string, w: string) =>
+    decide({ tool: 'Write', caller: { kind: 'agent', agentId, role: 'artifice' }, quest: q, root: ROOT, reads: [], writes: [`${ROOT}/${w}`], patterns: [] })
+  const running = () => {
+    let q = ok(agentSpawned(ok(startTask(parallel(), 't1', 3)), agent('a1', 'artifice', 't1'), 3))
+    q = ok(agentSpawned(ok(startParallel(q, 't2', BENCH, 4)), agent('a2', 'artifice', 't2'), 5))
+    return q
+  }
+  test('el Artífice en paralelo escribe solo en su taller, en sus rutas, aunque el carril principal esté en otra fase', () => {
+    const q = { ...running(), state: 'REVIEWING' as const }
+    expect(write(q, 'a2', '.guildflow/wt/t2-1/src/other.js').kind).toBe('allow')
+    expect(write(q, 'a2', 'src/other.js').kind).toBe('deny') // el árbol principal no: lo integra el mod
+    expect(write(q, 'a2', '.guildflow/wt/t2-1/src/math.js').kind).toBe('deny') // ruta de otra subtarea
+    expect(write(q, 'a2', '.guildflow/wt/t2-1/test/x.test.js').kind).toBe('deny') // protegida por su comprobación
+  })
+  test('el carril principal sigue con sus reglas y no puede arrancar una subtarea que pise un taller', () => {
+    const q = running()
+    expect(write(q, 'a1', 'src/math.js').kind).toBe('allow')
+    expect(write(q, 'a1', '.guildflow/wt/t2-1/src/other.js').kind).toBe('deny')
+    const free = { ...q, state: 'DISPATCH' as const, activeTask: null, progress: { ...q.progress, t1: { ...q.progress.t1!, status: 'done' as const } } }
+    const r = startTask(free, 't3', 6)
+    expect(r.ok ? '' : r.error).toContain('pisan el taller en marcha de t2')
   })
 })

@@ -198,6 +198,8 @@ export function startTask(q: Quest, taskId: string, now: number): Outcome {
       if (p.status !== 'pending') throw new Error(`la subtarea ${taskId} está ${p.status}`)
       const missing = task.dependsOn.filter(d => c.progress[d]?.status !== 'done')
       if (missing.length) throw new Error(`dependencias sin terminar: ${missing.join(', ')}`)
+      const clash = benchClash(c, task.paths)
+      if (clash) throw new Error(`las rutas de ${taskId} pisan el taller en marcha de ${clash}; espera a que se integre`)
     }
     if (c.iterations >= c.limits.maxQuestIterations) {
       stop(c, 'HALTED', `límite de iteraciones por misión (${c.limits.maxQuestIterations})`, now, log)
@@ -248,6 +250,16 @@ export function parallelCandidates(q: Quest): string[] {
     .filter(t => q.progress[t.id]?.status === 'pending' && !t.visual && t.dependsOn.every(d => q.progress[d]?.status === 'done'))
     .filter(t => !busy.some(paths => overlaps(paths, t.paths)))
     .map(t => t.id)
+}
+
+/** Taller en marcha cuyas rutas se solapan con estas (el carril principal no puede pisarlo), o null. */
+export const benchClash = (q: Quest, paths: string[]) =>
+  Object.keys(q.benches ?? {}).find(id => overlaps(q.plan?.tasks.find(t => t.id === id)?.paths ?? [], paths)) ?? null
+
+/** Taller de un agente (Artífice en paralelo): su subtarea y su carpeta, o null si trabaja en el carril principal. */
+export function benchOf(q: Quest, agentId: string): { taskId: string; dir: string } | null {
+  for (const [taskId, b] of Object.entries(q.benches ?? {})) if (b.agentId === agentId) return { taskId, dir: b.dir }
+  return null
 }
 
 /** Abre el taller de una subtarea y la plaza de su Artífice en paralelo; el carril principal sigue a lo suyo. */
@@ -756,7 +768,7 @@ export function nextStep(q: Quest): string {
     case 'DISPATCH': {
       const queued = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'queued')
       if (queued) return `Mod: integrar el taller de ${queued.id}`
-      const ready = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'pending' && t.dependsOn.every(d => q.progress[d]?.status === 'done'))
+      const ready = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'pending' && t.dependsOn.every(d => q.progress[d]?.status === 'done') && !benchClash(q, t.paths))
       const busy = Object.keys(q.benches ?? {})
       if (!ready) return busy.length ? `Esperando a los Artífices en paralelo (${busy.join(', ')})` : 'Maestro: no hay subtareas listas'
       const also = parallelCandidates(q).filter(id => id !== ready.id)

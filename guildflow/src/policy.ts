@@ -2,7 +2,7 @@
 // función decide con hechos ya resueltos. El orden de las comprobaciones está documentado en
 // docs/09-security-review.md y fijado por tests/policy.test.ts.
 import type { Effort, Quest, Role } from '../types'
-import { isApproved, isStopped, isWorking } from './machine'
+import { benchOf, isApproved, isStopped, isWorking } from './machine'
 import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, autoUnwritable, AUTO_EXTS, taskEffort, type PathEntry } from './validation'
 
 export const PLUGIN = 'guildflow'
@@ -277,6 +277,9 @@ export function decide(f: Facts): Decision {
       return OWN_TOOLS.includes(f.tool) ? { kind: 'own', step: '3-own' } : { kind: 'allow', step: '3-no-quest' }
     }
     if (!role) return deny('4-role', `agente ${agentId} sin rol del gremio durante la misión ${q.id}; se rechaza`)
+    // Un Artífice en paralelo se juzga con su propia subtarea como la activa y escribe solo en su taller
+    const bench = role === 'artifice' ? benchOf(q, agentId) : null
+    if (bench) return decideBench(f, q, bench)
     if (!toolsFor(q, role).includes(f.tool)) return deny('4-whitelist', `el rol ${role} no puede usar ${f.tool}${role === 'artifice' ? ' (no figura en los recursos aprobados de su subtarea)' : ''}`)
     if (f.tool.startsWith('mcp__Claude_Browser__')) {
       const why = browserProblem(f.tool, f.input)
@@ -333,6 +336,42 @@ export function decide(f: Facts): Decision {
   }
   if (f.tool.startsWith('mcp__')) return { kind: 'ask', step: '5-external', question: `Misión ${q.id}: el Maestro quiere usar ${f.tool} (sistema externo que GuildFlow no clasifica). ¿Permitir esta vez?` }
   return deny('5-unknown', `${f.tool} no forma parte del protocolo de la misión ${q.id}. ${MAIN_HINT}`)
+}
+
+/**
+ * Artífice en paralelo: las mismas reglas que en el carril principal, con su subtarea como la activa, sin depender
+ * del estado del carril principal y con su taller como raíz de escritura (lo integra después el mod).
+ */
+function decideBench(f: Facts, q: Quest, bench: { taskId: string; dir: string }): Decision {
+  const v: Quest = { ...q, activeTask: bench.taskId }
+  if (!toolsFor(v, 'artifice').includes(f.tool)) return deny('4-whitelist', `el rol artifice no puede usar ${f.tool} (no figura en los recursos aprobados de su subtarea)`)
+  if (f.tool === 'Skill') {
+    const skills = v.plan?.tasks.find(t => t.id === bench.taskId)?.resources.skills ?? []
+    if (!f.skill || !skills.includes(f.skill)) return deny('4-whitelist', `skill no aprobada para la subtarea: ${f.skill ?? '?'}`)
+  }
+  if (OWN_TOOLS.includes(f.tool)) return { kind: 'own', step: '4-own' }
+  if (isStopped(q)) return deny('4-state', `la misión está ${q.state}: ${q.reason ?? ''}`.trim())
+  for (const p of f.patterns) if (badPattern(p)) return deny('4-read', `patrón fuera del proyecto: ${p}`)
+  for (const r of f.reads) if (r === null || !inside(r, f.root)) return deny('4-read', 'lectura fuera del proyecto o ruta no resoluble')
+  if (!WRITE_TOOLS.includes(f.tool)) return { kind: 'allow', step: '4-bench' }
+  const task = v.plan?.tasks.find(t => t.id === bench.taskId)
+  if (!task) return deny('4-write', 'subtarea del taller desconocida')
+  const home = `${f.root}/${bench.dir.toLowerCase()}`
+  const prot = protectedEntries(v)
+  const entries = task.paths.map(p => parseEntry(p) as PathEntry)
+  let fresh = 0
+  for (const w of f.writes) {
+    if (w === null) return deny('4-write', 'ruta de escritura no resoluble con seguridad')
+    if (!inside(w, home)) return deny('4-write', `en paralelo escribes solo en tu taller: ${bench.dir}/<ruta> (${task.paths.join(', ')}); rechazado: ${w.slice(f.root.length + 1)}`)
+    if (prot.some(e => matchesEntry(w, home, e) || (e.dir && w === `${home}/${e.rel.toLowerCase()}`)))
+      return deny('4-write', `ruta protegida (definición de una comprobación): ${w.slice(home.length + 1)}`)
+    if (!entries.some(e => matchesEntry(w, home, e))) return deny('4-write', `${task.id} solo puede escribir en ${task.paths.join(', ')} (dentro de su taller ${bench.dir}); rechazado: ${w.slice(home.length + 1)}`)
+    const why = q.approval?.by === 'auto' ? autoUnwritable(w.slice(home.length + 1), q.limits.autoApproveExtensions ?? AUTO_EXTS) : null
+    if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(home.length + 1)} no se puede escribir (${why}); necesita un plan aprobado por la persona`)
+    if (!q.filesWritten.includes(`${f.root}${w.slice(home.length)}`)) fresh += 1
+  }
+  if (q.filesWritten.length + fresh > q.limits.maxFilesChanged) return deny('4-limit', `límite de ${q.limits.maxFilesChanged} archivos modificados por misión`)
+  return { kind: 'allow', step: '4-bench' }
 }
 
 export const READ_ONLY_TOOLS = READ_TOOLS
