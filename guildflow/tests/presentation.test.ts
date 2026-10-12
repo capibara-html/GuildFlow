@@ -15,7 +15,7 @@ describe('diálogo de aprobación', () => {
   })
   test('un plan que no cabe completo no se presenta recortado: se rechaza', () => {
     const q = planned()
-    const plan = { ...q.plan!, tasks: [{ ...q.plan!.tasks[0], paths: Array.from({ length: 30 }, (_, i) => `src/modulo-con-nombre-largo-${i}/`) }], checks: [{ ...q.plan!.checks[0], argv: ['node', 'x'.repeat(APPROVAL_MAX)] }] }
+    const plan = { ...q.plan!, tasks: [{ ...q.plan!.tasks[0]!, paths: Array.from({ length: 30 }, (_, i) => `src/modulo-con-nombre-largo-${i}/`) }], checks: [{ ...q.plan!.checks[0]!, argv: ['node', 'x'.repeat(APPROVAL_MAX)] }] }
     expect(approvalText(q.id, plan, LIMITS)).toBeNull()
   })
 })

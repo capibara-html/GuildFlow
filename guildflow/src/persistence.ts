@@ -128,7 +128,6 @@ export async function loadQuest(io: Io, root: string): Promise<Loaded> {
   // interrumpida de la misma misión, o archivo de una misión anterior); cualquier otra diferencia no la escribió
   // este mod y se avisa como posible manipulación.
   const store = valid.find(v => v.source === 'store')
-  const disk = valid.filter(v => v.source !== 'store').sort((a, b) => b.q.rev - a.q.rev)[0]
   if (store) {
     for (const d of valid.filter(v => v.source !== 'store')) {
       if (JSON.stringify(d.q) === JSON.stringify(store.q)) continue
@@ -138,6 +137,7 @@ export async function loadQuest(io: Io, root: string): Promise<Loaded> {
     if (fileText !== null && valid.some(v => v.source === 'file' && JSON.stringify(v.q) === JSON.stringify(store.q))) lastText.set(root, hash(fileText))
     return { quest: store.q, source: 'store', problems }
   }
+  const disk = valid.filter(v => v.source !== 'store').sort((a, b) => b.q.rev - a.q.rev)[0]! // sin store, todas las válidas son de disco y hay al menos una
   if (disk.source === 'file' && fileText !== null) lastText.set(root, hash(fileText))
   return { quest: disk.q, source: disk.source, problems }
 }

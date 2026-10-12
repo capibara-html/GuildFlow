@@ -73,7 +73,7 @@ describe('transiciones', () => {
 
   test('un plan alterado tras presentarse no puede aprobarse', () => {
     const q = planned()
-    q.plan!.tasks[0].paths.push('src/otro.js')
+    q.plan!.tasks[0]!.paths.push('src/otro.js')
     const r = approve(q, { by: 'human', answer: 'Aprobar', baseline: null }, 3)
     expect(r.ok).toBe(false)
   })
@@ -109,7 +109,7 @@ describe('criterios y evidencia', () => {
   test('un test fallido lleva a FIXING sin pasar por la revisión', () => {
     const q = round(approved(), 1, { unit: false, scope: true, review: null })
     expect(q.state).toBe('FIXING')
-    expect(q.progress.t1.lastFailure).toContain('c1')
+    expect(q.progress.t1!.lastFailure).toContain('c1')
   })
 
   test('el Paladín no puede aprobar un criterio automático ni aprobar sin referencia', () => {
@@ -130,7 +130,7 @@ describe('criterios y evidencia', () => {
     const q = approved()
     expect(q.approval?.planHash).toBe(q.planHash)
     const tampered = JSON.parse(JSON.stringify(q)) as Quest
-    tampered.plan!.tasks[0].criteria[0].check = 'review'
+    tampered.plan!.tasks[0]!.criteria[0]!.check = 'review'
     expect(startTask(tampered, 't1', 3).ok).toBe(false)
   })
 })
@@ -198,7 +198,7 @@ describe('límites del ciclo', () => {
     expect(q.usage.mainTokens).toBe(100)
     expect(q.usage.agentTokens).toBe(50)
     expect(q.usage.cacheReadTokens).toBe(1010)
-    expect(q.agents[0].tokens).toBe(50)
+    expect(q.agents[0]!.tokens).toBe(50)
     expect(Math.abs(q.usage.costUsd - 0.5) < 1e-9).toBe(true)
   })
 })
@@ -228,7 +228,7 @@ describe('paradas y recuperación', () => {
     q = ok(halt(q, 'user', 'detenida por la persona', 4))
     q = ok(agentFinished(q, 'a', { reason: 'answer', partial: false }, 5))
     expect(q.state).toBe('HALTED')
-    expect(q.agents[0].status).toBe('done')
+    expect(q.agents[0]!.status).toBe('done')
     expect(q.pausedFrom).toBe('FIXING')
   })
 
@@ -236,9 +236,9 @@ describe('paradas y recuperación', () => {
     let q = ok(startTask(approved(), 't1', 3))
     q = ok(agentSpawned(q, agent('a', 'artifice', 't1'), 3))
     q = ok(recover(q, 9))
-    expect(q.agents[0].status).toBe('lost')
+    expect(q.agents[0]!.status).toBe('lost')
     expect(q.state).toBe('PAUSED')
-    expect(q.progress.t1.attempts).toBe(0)
+    expect(q.progress.t1!.attempts).toBe(0)
     expect(q.pausedFrom).toBe('DISPATCH')
     expect(q.reason).toContain('perdidos')
   })

@@ -62,7 +62,7 @@ export function world(on: On, opts: { quest?: Quest; answers?: string[]; agentLi
   })
   // AskUserQuestion: la "persona" responde con la siguiente respuesta preparada
   on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {
-    const q = (e as unknown as { questions: { question: string }[] }).questions[0].question
+    const q = (e as unknown as { questions: { question: string }[] }).questions[0]!.question
     w.asked.push(q)
     const a = w.answers.shift()
     if (a === undefined) return { deny: 'diálogo cerrado' }

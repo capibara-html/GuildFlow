@@ -102,7 +102,7 @@ describe('quest.json', () => {
   test('plan alterado fuera del mod tras la aprobación se detecta', () => {
     const q = approved()
     expect(tampered(q)).toBe(false)
-    q.plan!.tasks[0].criteria[0].text = 'otro criterio'
+    q.plan!.tasks[0]!.criteria[0]!.text = 'otro criterio'
     expect(tampered(q)).toBe(true)
   })
 })

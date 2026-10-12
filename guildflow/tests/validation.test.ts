@@ -39,7 +39,7 @@ describe('validación del plan', () => {
   test('el plan de referencia es válido y añade el criterio de alcance', () => {
     const r = validatePlan(RAW_PLAN, LIMITS)
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.plan.tasks[0].criteria.map(c => c.check)).toEqual(['check:unit', 'review', 'diff-scope'])
+    if (r.ok) expect(r.plan.tasks[0]!.criteria.map(c => c.check)).toEqual(['check:unit', 'review', 'diff-scope'])
   })
   test('criterio sin método verificable o con comprobación no declarada impide aprobar', () => {
     const a = clone(RAW_PLAN) as Record<string, any>
@@ -130,7 +130,7 @@ describe('comandos y límites', () => {
 describe('planes sensibles (no se aprueban automáticamente)', () => {
   const plan = (paths: string[], complexity = 'small') => {
     const raw = clone(RAW_PLAN) as typeof RAW_PLAN & { complexity: string }
-    raw.tasks[0].paths = paths
+    raw.tasks[0]!.paths = paths
     raw.complexity = complexity
     const v = validatePlan(raw, LIMITS)
     if (!v.ok) throw new Error(v.errors.join('; '))

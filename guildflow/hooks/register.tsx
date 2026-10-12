@@ -82,6 +82,7 @@ async function setView($: $) {
   const line = `${stateLine(snap, th)}${said ? `\n${said}` : ''}`
   const important = ['DONE', 'LOGGED', 'BLOCKED', 'HALTED', 'PAUSED', 'AWAITING_APPROVAL'].includes(snap.state)
   $.ui.toast(line, { timeoutMs: important ? 10_000 : 6_000 })
+  // @ts-expect-error ui.notify existe en el motor (2.1.295) aunque los tipos instalados aún no lo declaran
   if (important) void $.ui.notify(stateLine(snap, th), { title: th === 'gremio' ? 'Gremio · GuildFlow' : 'GuildFlow' }).catch(() => undefined)
 }
 
@@ -197,9 +198,9 @@ async function roleOf($: $, q: Quest | null, agentId: string): Promise<Role | nu
 /** Criterios de revisión ya juzgados en esta ronda (una revisión repetida no los vuelve a hacer). */
 function judgedBrief(q: Quest, taskId: string): string {
   const task = q.plan!.tasks.find(t => t.id === taskId)!
-  const p = q.progress[taskId]
+  const p = M.progressOf(q, taskId)
   const done = task.criteria.filter(c => (c.check === 'review' || c.check === 'visual') && p.evidence[c.id]?.round === p.round && p.evidence[c.id]?.source === 'paladin')
-  return done.length ? `Ya juzgados en esta ronda (NO los repitas): ${done.map(c => `${c.id} ${p.evidence[c.id].verdict}`).join(', ')}. Juzga solo los demás.` : ''
+  return done.length ? `Ya juzgados en esta ronda (NO los repitas): ${done.map(c => `${c.id} ${p.evidence[c.id]!.verdict}`).join(', ')}. Juzga solo los demás.` : ''
 }
 
 /** ¿La llamada fue una captura del resultado? (computer screenshot/zoom, suelta o dentro de un lote). */
@@ -227,7 +228,7 @@ function brief(q: Quest, role: Role): string {
   if (role === 'archimago')
     return `${head}\nPetición original: ${q.request}\nTarea: analiza el repositorio (solo lectura) y devuelve SOLO el plan JSON con el esquema de tu definición (objective, scope, constraints, risks, complexity, checks, tasks, installs). Si la petición no trae tests que la verifiquen, incluye una primera subtarea de especificación ejecutable. No escribas archivos ni envíes el plan: lo envía el Maestro.`
   const task = q.plan!.tasks.find(t => t.id === q.activeTask)!
-  const p = q.progress[task.id]
+  const p = M.progressOf(q, task.id)
   const prot = protectedEntries(q).map(e => (e.dir ? `${e.rel}/` : e.rel))
   const criteria = task.criteria.map(c => `- ${c.id} [${c.check}]: ${c.text}`).join('\n')
   const checks = q.plan!.checks.filter(k => task.criteria.some(c => c.check === `check:${k.id}`))
@@ -258,7 +259,7 @@ function brief(q: Quest, role: Role): string {
     .filter(c => M.automated(c.check))
     .map(c => {
       const ev = p.evidence[c.id]
-      return `- ${c.id}: ${ev && ev.round === p.round ? `${ev.verdict} (${ev.detail.split('\n')[0].slice(0, 300)}${ev.runId ? `; .guildflow/runs/${ev.runId}.json` : ''})` : 'sin ejecutar'}`
+      return `- ${c.id}: ${ev && ev.round === p.round ? `${ev.verdict} (${ev.detail.split('\n')[0]!.slice(0, 300)}${ev.runId ? `; .guildflow/runs/${ev.runId}.json` : ''})` : 'sin ejecutar'}`
     })
   return [
     head,
@@ -511,7 +512,7 @@ ${auto}`)
       if (o.quest.state !== 'IMPLEMENTING') return res({ ok: false, state: o.quest.state, reason: o.quest.reason, next: M.nextStep(o.quest) })
       const t = o.quest.plan!.tasks.find(x => x.id === o.quest.activeTask)!
       if (t.visual) await ensurePreview($, o.quest)
-      return res({ ok: true, state: o.quest.state, launch: `Agent con subagent_type "${ROLES.artifice.type}" y un mensaje breve; el mod le entrega el brief completo (rutas, criterios, recursos, fallos previos)`, task: `${t.id} · ${t.title} · intento ${o.quest.progress[t.id].attempts}/${M.maxAttempts(o.quest, t.id)}` })
+      return res({ ok: true, state: o.quest.state, launch: `Agent con subagent_type "${ROLES.artifice.type}" y un mensaje breve; el mod le entrega el brief completo (rutas, criterios, recursos, fallos previos)`, task: `${t.id} · ${t.title} · intento ${M.progressOf(o.quest, t.id).attempts}/${M.maxAttempts(o.quest, t.id)}` })
     }
     case 'start_review': {
       const o = await mutate($, (x, now) => M.startReview(x, now))

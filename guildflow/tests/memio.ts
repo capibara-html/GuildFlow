@@ -26,7 +26,7 @@ export function memIo(seed: Record<string, string> = {}, proc?: Proc, opts: { fa
     },
     list: async p => {
       const pre = `${real(p)}/`
-      const names = new Set([...files.keys()].filter(k => k.startsWith(pre)).map(k => k.slice(pre.length).split('/')[0]))
+      const names = new Set([...files.keys()].filter(k => k.startsWith(pre)).map(k => k.slice(pre.length).split('/')[0]!))
       return [...names].map(name => ({ name, isLink: false }))
     },
     stat: async (p, resolve) => {

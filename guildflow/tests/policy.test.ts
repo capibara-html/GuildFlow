@@ -49,7 +49,7 @@ describe('subagentes', () => {
   })
   test('el Artífice no puede tocar el estado del gremio ni el script que lo certifica', () => {
     const q = implementing()
-    q.plan!.tasks[0].paths.push('test/')
+    q.plan!.tasks[0]!.paths.push('test/')
     for (const w of [`${ROOT}/.guildflow/quest.json`, `${ROOT}/test/math.test.js`, `${ROOT}/.git/config`])
       expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [w] })).kind).toBe('deny')
   })
@@ -123,7 +123,7 @@ describe('Maestro con la misión sin trabajar', () => {
 describe('plan aprobado automáticamente', () => {
   test('el Artífice no escribe rutas sensibles aunque caigan dentro de su directorio', () => {
     const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN
-    raw.tasks[0].paths = ['pkg/']
+    raw.tasks[0]!.paths = ['pkg/']
     const base = { gitRoot: null, head: null, dirty: [], protectedHashes: {} }
     let q = ok(approve(planned(raw), { by: 'auto', answer: 'autoApprovePlan', baseline: base }, 2))
     q = ok(startTask(q, 't1', 3))

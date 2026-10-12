@@ -9,16 +9,23 @@ export const OUTPUT_LIMIT = 16_000
 /** git del mod: sin fsmonitor (que ejecuta un programa configurado por el repositorio) ni paginador. */
 export const gitArgv = (args: string[]) => ['git', '-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', ...args]
 
+/** Ejecutable de una comprobación (validatePlan exige al menos uno); sin él no se ejecuta ni se protege nada. */
+function argv0(def: CheckDef): string {
+  const a = def.argv[0]
+  if (a === undefined) throw new Error('comprobación sin ejecutable')
+  return a
+}
+
 /** Número de tests ejecutados según los formatos habituales; null si la salida no lo dice. */
 export function countTests(out: string): number | null {
   const pats: [RegExp, (m: RegExpMatchArray) => number][] = [
-    [/^# tests (\d+)/m, m => +m[1]], // node --test (TAP)
-    [/ℹ tests (\d+)/, m => +m[1]], // node --test (spec)
-    [/Tests:.*?(\d+) total/, m => +m[1]], // jest
-    [/Tests\s+.*\((\d+)\)/, m => +m[1]], // vitest
-    [/test result: \w+\. (\d+) passed; (\d+) failed/, m => +m[1] + +m[2]], // cargo
-    [/(?:(\d+) failed, )?(\d+) passed/, m => +(m[1] ?? 0) + +m[2]], // pytest y similares
-    [/\btests: (\d+)/i, m => +m[1]],
+    [/^# tests (\d+)/m, m => +m[1]!], // node --test (TAP)
+    [/ℹ tests (\d+)/, m => +m[1]!], // node --test (spec)
+    [/Tests:.*?(\d+) total/, m => +m[1]!], // jest
+    [/Tests\s+.*\((\d+)\)/, m => +m[1]!], // vitest
+    [/test result: \w+\. (\d+) passed; (\d+) failed/, m => +m[1]! + +m[2]!], // cargo
+    [/(?:(\d+) failed, )?(\d+) passed/, m => +(m[1] ?? 0) + +m[2]!], // pytest y similares
+    [/\btests: (\d+)/i, m => +m[1]!],
   ]
   for (const [re, f] of pats) {
     const m = out.match(re)
@@ -108,7 +115,7 @@ export async function autoProtects(io: Io, root: string, def: CheckDef): Promise
     if (st?.kind === 'file') extra.add(e.rel)
     else if (st?.kind === 'dir') extra.add(`${e.rel}/`)
   }
-  if (['node', 'bun', 'deno'].includes(exeName(def.argv[0]))) {
+  if (['node', 'bun', 'deno'].includes(exeName(argv0(def)))) {
     if (await io.exists(`${root}/package.json`)) extra.add('package.json')
   }
   return [...extra]
@@ -121,7 +128,7 @@ export async function execute(io: Io, q: Quest, def: CheckDef): Promise<Executio
   const root = q.project
   const base: Omit<Execution, 'judged'> = { argv: def.argv, cwd: def.cwd, exitCode: null, stdout: '', stderr: '', error: null, timedOut: false, durationMs: 0, integrity: null }
   const done = (x: Omit<Execution, 'judged'>): Execution => ({ ...x, judged: judge(def, x) })
-  if (!q.limits.allowedExecutables.includes(exeName(def.argv[0]))) return done({ ...base, error: `ejecutable no autorizado: ${def.argv[0]}` })
+  if (!q.limits.allowedExecutables.includes(exeName(argv0(def)))) return done({ ...base, error: `ejecutable no autorizado: ${def.argv[0]}` })
   const cwd = await realOf(io, def.cwd === '.' ? root : `${root}/${def.cwd}`, root)
   if (!cwd || !inside(cwd, root)) return done({ ...base, error: `directorio de trabajo fuera del proyecto: ${def.cwd}` })
   const expected = q.baseline?.protectedHashes ?? {}
@@ -154,7 +161,7 @@ export function parsePorcelain(z: string): [string, string][] {
   const out: [string, string][] = []
   const parts = z.split('\0')
   for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]
+    const p = parts[i]!
     if (p.length < 4) continue
     const st = p.slice(0, 2)
     out.push([st, p.slice(3)])

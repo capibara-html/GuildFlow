@@ -13,7 +13,7 @@
 | Comprobación | Resultado | Cómo |
 |---|---|---|
 | `claude plugin validate guildflow` | **PASS** ("Validation passed") | Binario 2.1.295 de Desktop |
-| Comprobación de tipos (`tsc` 5.9.3, `strict`) | **PASS** (0 errores) | `tsconfig` con los tipos del motor, fuera del plugin |
+| Comprobación de tipos (`tsc` 5.9.3, `strict`) | **PASS** (0 errores) | `npx -y -p typescript@5.9.3 tsc -p guildflow --noEmit`: el `tsconfig` del plugin, que extiende el de los tipos del motor (incluye `noUncheckedIndexedAccess`) |
 
 ## 2. Pruebas automáticas: `claude plugin test guildflow`
 

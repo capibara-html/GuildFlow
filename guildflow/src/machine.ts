@@ -35,6 +35,13 @@ export const isWorking = (q: Quest | null): q is Quest => isActive(q) && !isStop
 export const isApproved = (q: Quest) =>
   q.approval !== null && q.plan !== null && q.planHash !== null && q.approval.planHash === q.planHash && hash(JSON.stringify(q.plan)) === q.planHash
 
+/** Progreso de una subtarea del plan. submitPlan crea uno por subtarea; si falta, la operación falla (nunca se omite). */
+export function progressOf(q: Quest, id: string): TaskProgress {
+  const p = q.progress[id]
+  if (!p) throw new Error(`subtarea sin progreso: ${id}`)
+  return p
+}
+
 const clone = (q: Quest): Quest => JSON.parse(JSON.stringify(q)) as Quest
 const fail = (error: string): Outcome => ({ ok: false, error })
 
@@ -133,8 +140,8 @@ export function submitPlan(q: Quest, plan: Plan, now: number): Outcome {
     const progress: Record<string, TaskProgress> = {}
     for (const t of plan.tasks) {
       const prev = old?.tasks.find(o => o.id === t.id)
-      const kept = prev && JSON.stringify(prev) === JSON.stringify(t) && c.progress[t.id]?.status === 'done'
-      progress[t.id] = kept ? c.progress[t.id] : newProgress()
+      const before = c.progress[t.id]
+      progress[t.id] = prev && JSON.stringify(prev) === JSON.stringify(t) && before?.status === 'done' ? before : newProgress()
     }
     c.plan = plan
     c.planHash = hash(JSON.stringify(plan))
@@ -216,7 +223,7 @@ export function startReview(q: Quest, now: number): Outcome {
   return op(q, now, (c, log) => {
     if (c.state !== 'REVIEWING' || !c.activeTask) throw new Error(`no hay revisión pendiente (${c.state})`)
     if (c.agents.some(a => a.role === 'paladin' && a.status === 'running')) throw new Error('ya hay un Paladín revisando')
-    c.slot = { role: 'paladin', taskId: c.activeTask, attempt: c.progress[c.activeTask].round }
+    c.slot = { role: 'paladin', taskId: c.activeTask, attempt: progressOf(c, c.activeTask).round }
     log.push({ ev: 'review.slot', data: { taskId: c.activeTask } })
   })
 }
@@ -266,7 +273,7 @@ export function agentSpawned(q: Quest, rec: AgentRecord, now: number): Outcome {
 function rewind(c: Quest, refund: boolean): QuestState {
   const id = c.activeTask
   if (c.state === 'IMPLEMENTING' && id) {
-    const p = c.progress[id]
+    const p = progressOf(c, id)
     if (refund) {
       p.attempts = Math.max(0, p.attempts - 1)
       p.round = Math.max(0, p.round - 1)
@@ -277,7 +284,7 @@ function rewind(c: Quest, refund: boolean): QuestState {
     return p.status === 'fixing' ? 'FIXING' : 'DISPATCH'
   }
   if (c.state === 'REVIEWING' && id) {
-    const p = c.progress[id]
+    const p = progressOf(c, id)
     for (const [cid, ev] of Object.entries(p.evidence)) if (ev.source === 'paladin' && ev.round === p.round) delete p.evidence[cid]
     c.slot = null
     return 'REVIEWING'
@@ -325,7 +332,7 @@ export function resume(q: Quest, a: { by: string; breach: string | null }, now: 
     if (c.state === 'HALTED' && c.haltKind === 'limit' && a.breach) throw new Error(`el límite sigue superado: ${a.breach}`)
     const target = c.pausedFrom ?? 'PLANNING'
     if (c.state === 'BLOCKED' && c.activeTask) {
-      const p = c.progress[c.activeTask]
+      const p = progressOf(c, c.activeTask)
       if (p.status === 'blocked') {
         p.bonusAttempts += 1
         p.status = p.attempts > 0 ? 'fixing' : 'pending'
@@ -352,7 +359,7 @@ export function agentFinished(q: Quest, agentId: string, a: { reason: string; pa
     if (a.reason === 'aborted') return void stop(c, 'PAUSED', `${rec.role} interrumpido por la persona`, now, log)
     if (a.reason !== 'answer') return void stop(c, 'BLOCKED', `${rec.role} terminó con ${a.reason}`, now, log)
     if (rec.role === 'artifice' && c.state === 'IMPLEMENTING') {
-      c.progress[rec.taskId!].status = 'verifying'
+      progressOf(c, rec.taskId!).status = 'verifying'
       go(c, 'VERIFYING', now, log)
     } else if (rec.role === 'paladin' && c.state === 'REVIEWING') {
       settleReview(c, now, log, a.partial)
@@ -392,7 +399,7 @@ export function recordCheck(q: Quest, run: CheckRun, detail: string, now: number
     if (!run.certifying) return
     if (c.state !== 'VERIFYING' || run.taskId !== c.activeTask || !c.activeTask) throw new Error(`comprobación certificadora fuera de VERIFYING (${c.state})`)
     const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
-    const p = c.progress[task.id]
+    const p = progressOf(c, task.id)
     const key = run.checkId === 'diff-scope' ? 'diff-scope' : `check:${run.checkId}`
     for (const cr of task.criteria.filter(x => x.check === key)) {
       p.evidence[cr.id] = { verdict: run.pass ? 'PASS' : 'FAIL', source: 'run_check', detail, runId: run.runId, round: p.round, at: now }
@@ -411,7 +418,7 @@ export function recordCheck(q: Quest, run: CheckRun, detail: string, now: number
 export function pendingChecks(q: Quest): string[] {
   const id = q.activeTask
   if (!id || !q.plan) return []
-  const p = q.progress[id]
+  const p = progressOf(q, id)
   const task = q.plan.tasks.find(t => t.id === id)!
   const ids = task.criteria.filter(x => automated(x.check) && !currentEvidence(p, x.id)).map(x => (x.check === 'diff-scope' ? 'diff-scope' : x.check.slice(6)))
   return [...new Set(ids)]
@@ -433,7 +440,7 @@ export function recordVerdict(q: Quest, a: { agentId: string; criterionId: strin
     if (cr.check === 'visual' && decisive && !(rec.looks ?? 0)) throw new Error('un criterio visual exige mirar: haz al menos una captura del resultado en el navegador antes de juzgar')
     if (cr.check === 'visual' && decisive && a.evidence.trim().length < 30) throw new Error('describe lo que viste en la captura (qué pantalla, qué tamaño, qué cumple o falla)')
     if (cr.check === 'review' && decisive && !REF.test(a.evidence)) throw new Error('PASS/FAIL exige evidencia con archivo:línea o un runId')
-    const p = c.progress[task.id]
+    const p = progressOf(c, task.id)
     p.evidence[cr.id] = { verdict: a.verdict, source: 'paladin', detail: a.evidence.slice(0, 2000), runId: null, round: p.round, at: now }
     c.progressMark += 1
     log.push({ ev: 'review.verdict', data: { taskId: task.id, criterionId: cr.id, verdict: a.verdict } })
@@ -445,7 +452,7 @@ export const MAX_REVIEW_RETRIES = 2
 
 function settleReview(c: Quest, now: number, log: LogEntry[], partial = false) {
   const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
-  const p = c.progress[task.id]
+  const p = progressOf(c, task.id)
   // Revisión que no pudo hacerse: el Paladín se quedó sin peticiones (criterios sin juzgar) o declaró NOT_RUN
   // (no pudo comprobarlo: vista previa caída, entorno). No es un fallo del código: se conserva lo ya juzgado y se
   // abre otra revisión (acotada); solo si se agota, o si hay un FAIL/INCONCLUSIVE, cuenta como ronda fallida.
@@ -475,11 +482,11 @@ function settleReview(c: Quest, now: number, log: LogEntry[], partial = false) {
 /** Firma estable del fallo de una ronda: criterios no aprobados + primera línea normalizada de su evidencia. */
 export function failureSignature(c: Quest): string {
   const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
-  const p = c.progress[task.id]
+  const p = progressOf(c, task.id)
   const parts = task.criteria
     .map(cr => ({ cr, ev: currentEvidence(p, cr.id) }))
     .filter(x => x.ev?.verdict !== 'PASS')
-    .map(x => `${x.cr.id}:${x.ev?.verdict ?? 'NOT_RUN'}:${(x.ev?.detail ?? '').split('\n')[0].replace(/\d+/g, '#').slice(0, 160)}`)
+    .map(x => `${x.cr.id}:${x.ev?.verdict ?? 'NOT_RUN'}:${(x.ev?.detail ?? '').split('\n')[0]!.replace(/\d+/g, '#').slice(0, 160)}`)
     .sort()
   return hash(parts.join('|'))
 }
@@ -487,7 +494,7 @@ export function failureSignature(c: Quest): string {
 function failRound(c: Quest, now: number, log: LogEntry[]) {
   const id = c.activeTask!
   const task = c.plan!.tasks.find(t => t.id === id)!
-  const p = c.progress[id]
+  const p = progressOf(c, id)
   const sig = failureSignature(c)
   p.failures[sig] = (p.failures[sig] ?? 0) + 1
   const passed = task.criteria.filter(cr => currentEvidence(p, cr.id)?.verdict === 'PASS').length

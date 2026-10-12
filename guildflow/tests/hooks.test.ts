@@ -229,7 +229,7 @@ describe('herramienta quest y aprobación humana', () => {
     const q = planned()
     const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: ['Rechazar'] })
     const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN
-    raw.tasks[0].paths = ['src/math.js', 'package.json']
+    raw.tasks[0]!.paths = ['src/math.js', 'package.json']
     await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: raw })
     expect(w.asked.length).toBe(1)
     expect(saved(w).state).toBe('PLANNING')
@@ -302,7 +302,7 @@ describe('ajustes tras Pixel Chess', () => {
 describe('Maestro en Sonnet y planificación del Archimago', () => {
   const twoTasks = () => {
     const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN & { tasks: Record<string, unknown>[] }
-    raw.tasks = [raw.tasks[0], { ...raw.tasks[0], id: 't2', paths: ['src/other.js'], dependsOn: ['t1'] }]
+    raw.tasks = [raw.tasks[0]!, { ...raw.tasks[0]!, id: 't2', paths: ['src/other.js'], dependsOn: ['t1'] }]
     return raw
   }
   const planning = (q: Quest): Quest => ({ ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 })

@@ -97,7 +97,7 @@ const ROLES: Record<Station, Role> = {
 
 /** Una celda vacía junto a otra rellena pasa a tinta: contorno legible sobre fondo claro u oscuro. */
 function outline(g: Grid): Grid {
-  const filled = (i: number, j: number) => j >= 0 && j < N && i >= 0 && i < N && g[j][i] !== null && g[j][i] !== INK
+  const filled = (i: number, j: number) => j >= 0 && j < N && i >= 0 && i < N && g[j]![i] !== null && g[j]![i] !== INK
   return g.map((row, j) => row.map((c, i) => (c === null && (filled(i - 1, j) || filled(i + 1, j) || filled(i, j - 1) || filled(i, j + 1)) ? INK : c)))
 }
 
@@ -106,9 +106,9 @@ function rects(g: Grid): string {
   let s = ''
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; ) {
-      const c = g[y][x]
+      const c = g[y]![x]
       let w = 1
-      while (c && x + w < N && g[y][x + w] === c) w++
+      while (c && x + w < N && g[y]![x + w] === c) w++
       if (c) s += `<rect x="${x}" y="${y}" width="${w}" height="1" fill="${c}"/>`
       x += w
     }
@@ -118,7 +118,7 @@ function rects(g: Grid): string {
 function frame(s: Station, f: 0 | 1 | 'rest', alert = false): string {
   const g: Grid = Array.from({ length: N }, () => Array<string | null>(N).fill(null))
   const box: Box = (x, y, w, h, c) => {
-    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (j >= 0 && j < N && i >= 0 && i < N) g[j][i] = c
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (j >= 0 && j < N && i >= 0 && i < N) g[j]![i] = c
   }
   const r = ROLES[s]
   r.prop(box)

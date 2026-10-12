@@ -224,8 +224,11 @@ const DEFAULT_TRUSTED = 'mcp__context7__resolve-library-id,mcp__context7__query-
 export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
   const n = (k: string) => {
     const v = Number(options[k])
-    const [lo, hi] = HARD[k]
-    const x = Number.isFinite(v) ? v : DEFAULTS[k]
+    const range = HARD[k]
+    const fallback = DEFAULTS[k]
+    if (!range || fallback === undefined) throw new Error(`límite desconocido: ${k}`)
+    const [lo, hi] = range
+    const x = Number.isFinite(v) ? v : fallback
     const clamped = Math.min(hi, Math.max(lo, x))
     return k === 'costBudgetUsd' ? clamped : Math.floor(clamped)
   }
@@ -564,8 +567,8 @@ export function checkOverlaps(plan: Plan): { errors: string[]; warnings: string[
   }
   for (let i = 0; i < plan.tasks.length; i++)
     for (let j = i + 1; j < plan.tasks.length; j++) {
-      const a = plan.tasks[i]
-      const b = plan.tasks[j]
+      const a = plan.tasks[i]!
+      const b = plan.tasks[j]!
       if (a.paths.some(x => b.paths.some(y => overlaps(entry(x), entry(y))))) warnings.push(`${a.id} y ${b.id} comparten rutas: se ejecutarán en serie`)
     }
   return { errors, warnings }

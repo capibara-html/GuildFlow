@@ -152,7 +152,7 @@ export function summaryMarkdown(q: Quest, runs: string[], now: number, theme: Th
     out.push(`### ${t.id} · ${t.title} — ${pr?.status} (${pr?.attempts} intentos)`)
     for (const c of t.criteria) {
       const ev = pr?.evidence[c.id]
-      out.push(`- ${ev?.verdict ?? 'NOT_RUN'} · ${c.id} · ${c.text} — ${ev?.source ?? '—'}: ${(ev?.detail ?? '').split('\n')[0].slice(0, 200)}${ev?.runId ? ` (${ev.runId})` : ''}`)
+      out.push(`- ${ev?.verdict ?? 'NOT_RUN'} · ${c.id} · ${c.text} — ${ev?.source ?? '—'}: ${(ev?.detail ?? '').split('\n')[0]!.slice(0, 200)}${ev?.runId ? ` (${ev.runId})` : ''}`)
     }
     const failed = Object.entries(pr?.failures ?? {})
     if (failed.length) out.push(`- Fallos corregidos o repetidos: ${failed.map(([s, n]) => `${s}×${n}`).join(', ')}`)

@@ -44,8 +44,8 @@ describe('ejecución controlada', () => {
   test('ejecuta exactamente el argv congelado, sin shell, en la raíz', async () => {
     const m = memIo(seed, () => ({ exitCode: 0, stdout: '# tests 1', stderr: '' }))
     const q = implementing()
-    q.plan!.checks[0].protects = ['test/']
-    const x = await execute(m.io, q, q.plan!.checks[0])
+    q.plan!.checks[0]!.protects = ['test/']
+    const x = await execute(m.io, q, q.plan!.checks[0]!)
     expect(x.judged.pass).toBe(true)
     expect(m.runs).toEqual([{ argv: ['node', '--test', 'test/'], cwd: ROOT }])
   })
@@ -53,7 +53,7 @@ describe('ejecución controlada', () => {
   test('tiempo agotado → FAIL sin vía alternativa', async () => {
     const m = memIo(seed, () => 'timeout')
     const q = implementing()
-    const x = await execute(m.io, q, { ...q.plan!.checks[0], timeoutMs: 1000 })
+    const x = await execute(m.io, q, { ...q.plan!.checks[0]!, timeoutMs: 1000 })
     expect(x.timedOut).toBe(true)
     expect(x.judged.pass).toBe(false)
     expect(m.runs.length).toBe(1)

@@ -42,7 +42,7 @@ describe('presupuesto de agentes derivado del plan', () => {
   test('los intentos extra concedidos al reanudar amplían el presupuesto', () => {
     const q = approved()
     const before = agentBudget(q)
-    q.progress.t1.bonusAttempts = 1
+    q.progress.t1!.bonusAttempts = 1
     expect(agentBudget(q)).toBe(before + 2)
   })
   test('el diálogo de aprobación muestra el presupuesto', () => {
@@ -61,7 +61,7 @@ describe('especificación ejecutable (tests escritos por una subtarea)', () => {
   test('nuevas huellas solo cuando la subtarea de especificación está terminada', () => {
     const q = approved(specPlan(true))
     expect(rebaseProtected(q, 'spec', { 'test/': 'h' }, 5).ok).toBe(false)
-    q.progress.spec.status = 'done'
+    q.progress.spec!.status = 'done'
     const r = rebaseProtected(q, 'spec', { 'test/': 'nuevo' }, 5)
     expect(r.ok && r.quest.baseline!.protectedHashes['test/']).toBe('nuevo')
   })
@@ -70,11 +70,11 @@ describe('especificación ejecutable (tests escritos por una subtarea)', () => {
 describe('recursos por subtarea', () => {
   const withResources = (tools: string[], skills: string[] = []) => {
     const raw = clone(RAW_PLAN) as unknown as { tasks: Record<string, unknown>[] }
-    raw.tasks[0].resources = { tools, skills }
+    raw.tasks[0]!.resources = { tools, skills }
     return raw
   }
   test('solo herramientas MCP o web y skills con nombre válido', () => {
-    expect(valid(withResources(['mcp__context7__query-docs'], ['frontend-design'])).tasks[0].resources.tools).toEqual(['mcp__context7__query-docs'])
+    expect(valid(withResources(['mcp__context7__query-docs'], ['frontend-design'])).tasks[0]!.resources.tools).toEqual(['mcp__context7__query-docs'])
     for (const t of ['Bash', 'Write', 'mcp__guildflow__quest', 'mcp__x', 'rm -rf'])
       expect(errorsOf(withResources([t])).join()).toContain('resources.tools')
   })
@@ -103,7 +103,7 @@ describe('instalaciones de terceros', () => {
   const withInstalls = (installs: unknown[]) => ({ ...clone(RAW_PLAN), installs })
   const mcp = { kind: 'mcp', name: 'context7', reason: 'documentación', argv: ['claude', 'mcp', 'add', 'context7', '--', 'npx', '-y', '@upstash/context7-mcp'] }
   test('plugin/mcp/skill: argv exacto de claude; software: solo url, nunca se ejecuta', () => {
-    expect(valid(withInstalls([mcp])).installs[0].argv[0]).toBe('claude')
+    expect(valid(withInstalls([mcp])).installs[0]!.argv[0]).toBe('claude')
     expect(errorsOf(withInstalls([{ ...mcp, argv: ['npm', 'install', 'x'] }])).join()).toContain('argv')
     expect(errorsOf(withInstalls([{ ...mcp, argv: ['claude', 'mcp', 'add', 'x; rm -rf /'] }])).join()).toContain('argv')
     expect(errorsOf(withInstalls([{ kind: 'software', name: 'Godot', reason: 'motor', url: 'https://godotengine.org/download' }]))).toEqual([])
@@ -130,7 +130,7 @@ describe('fin de la revisión', () => {
   test('la subtarea queda done cuando el Paladín termina con todo en PASS (ahí se fijan las huellas de una especificación)', () => {
     let q = ok(startTask(approved(), 't1', 3))
     q = ok(agentSpawned(q, agent('art', 'artifice', 't1'), 3))
-    q.agents[0].status = 'done'
+    q.agents[0]!.status = 'done'
     q.state = 'VERIFYING'
     q = ok(recordCheck(q, { runId: 'run-1-unit', checkId: 'unit', taskId: 't1', certifying: true, pass: true, exitCode: 0, tests: 2, reason: 'ok', at: 4 }, 'ok', 4))
     q = ok(recordCheck(q, { runId: 'run-2-diff-scope', checkId: 'diff-scope', taskId: 't1', certifying: true, pass: true, exitCode: 0, tests: null, reason: 'ok', at: 4 }, 'ok', 4))
@@ -138,8 +138,8 @@ describe('fin de la revisión', () => {
     q = ok(startReview(q, 5))
     q = ok(agentSpawned(q, agent('pal', 'paladin', 't1'), 5))
     q = ok(recordVerdict(q, { agentId: 'pal', criterionId: 'c2', verdict: 'PASS', evidence: 'src/math.js:2' }, 6))
-    expect(q.progress.t1.status).toBe('reviewing')
+    expect(q.progress.t1!.status).toBe('reviewing')
     q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: false }, 7))
-    expect(q.progress.t1.status).toBe('done')
+    expect(q.progress.t1!.status).toBe('done')
   })
 })

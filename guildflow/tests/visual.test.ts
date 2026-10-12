@@ -16,7 +16,7 @@ const visualRaw = (over: Record<string, unknown> = {}) => {
     ...raw.tasks[0],
     visual: true,
     model: 'opus',
-    criteria: [...(raw.tasks[0].criteria as unknown[]), { id: 'v1', text: 'el tablero se ve nítido y nada se corta a 800×600', check: 'visual' }],
+    criteria: [...(raw.tasks[0]!.criteria as unknown[]), { id: 'v1', text: 'el tablero se ve nítido y nada se corta a 800×600', check: 'visual' }],
   }
   return { ...raw, preview: PREVIEW, ...over }
 }
@@ -36,9 +36,9 @@ function implementingVisual(): Quest {
 }
 function reviewingVisual(): Quest {
   let q = implementingVisual()
-  q.agents[0].status = 'done'
+  q.agents[0]!.status = 'done'
   q.state = 'REVIEWING'
-  q.progress.t1.status = 'reviewing'
+  q.progress.t1!.status = 'reviewing'
   q = ok(startReview(q, 4))
   return ok(agentSpawned(q, agent('pal', 'paladin', 't1'), 4))
 }
@@ -47,14 +47,14 @@ describe('plan visual', () => {
   test('válido: subtarea visual con criterio visual, Opus y servidor local', () => {
     expect(errorsOf(visualRaw())).toBe('')
     const v = validatePlan(visualRaw(), LIMITS)
-    expect(v.ok && v.plan.tasks[0].model).toBe('opus')
+    expect(v.ok && v.plan.tasks[0]!.model).toBe('opus')
   })
   test('una subtarea visual sin criterio visual, un criterio visual en subtarea no visual o sin preview se rechazan', () => {
     const noVisualCrit = visualRaw()
-    noVisualCrit.tasks[0].criteria = (noVisualCrit.tasks[0].criteria as { check: string }[]).filter(c => c.check !== 'visual')
+    noVisualCrit.tasks[0]!.criteria = (noVisualCrit.tasks[0]!.criteria as { check: string }[]).filter(c => c.check !== 'visual')
     expect(errorsOf(noVisualCrit)).toContain('necesita al menos un criterio "visual"')
     const notVisual = visualRaw()
-    notVisual.tasks[0].visual = false
+    notVisual.tasks[0]!.visual = false
     expect(errorsOf(notVisual)).toContain('"visual" (solo en subtareas visual)')
     expect(errorsOf(visualRaw({ preview: undefined }))).toContain('plan.preview')
   })
@@ -69,7 +69,7 @@ describe('plan visual', () => {
   })
   test('modelo de la subtarea: solo sonnet u opus; el diálogo lo muestra junto a la vista previa', () => {
     const bad = visualRaw()
-    bad.tasks[0].model = 'haiku'
+    bad.tasks[0]!.model = 'haiku'
     expect(errorsOf(bad)).toContain('model')
     const v = validatePlan(visualRaw(), LIMITS)
     if (!v.ok) throw new Error('inesperado')
@@ -153,9 +153,9 @@ describe('entorno de la vista previa', () => {
     q = ok(recordVerdict(q, { agentId: 'pal', criterionId: 'c2', verdict: 'PASS', evidence: 'src/math.js:2' }, 5))
     q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: false }, 6))
     expect(q.state).toBe('REVIEWING')
-    expect(q.progress.t1.attempts).toBe(1)
-    expect(q.progress.t1.evidence.v1).toBeUndefined()
-    expect(q.progress.t1.evidence.c2.verdict).toBe('PASS')
+    expect(q.progress.t1!.attempts).toBe(1)
+    expect(q.progress.t1!.evidence.v1).toBeUndefined()
+    expect(q.progress.t1!.evidence.c2!.verdict).toBe('PASS')
   })
 })
 
@@ -171,15 +171,15 @@ describe('revisión visual que no cabe en un Paladín', () => {
     const budget = agentBudget(q)
     q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: true }, 6))
     expect(q.state).toBe('REVIEWING')
-    expect(q.progress.t1.reviewRetries).toBe(1)
-    expect(q.progress.t1.attempts).toBe(1)
-    expect(q.progress.t1.evidence.c2.verdict).toBe('PASS')
+    expect(q.progress.t1!.reviewRetries).toBe(1)
+    expect(q.progress.t1!.attempts).toBe(1)
+    expect(q.progress.t1!.evidence.c2!.verdict).toBe('PASS')
     expect(agentBudget(q)).toBe(budget + 1)
     expect(ok(startReview(q, 7)).slot?.role).toBe('paladin')
   })
   test('agotadas las repeticiones, o con un FAIL ya emitido, cuenta como ronda fallida', () => {
     let q = reviewingVisual()
-    q.progress.t1.reviewRetries = MAX_REVIEW_RETRIES
+    q.progress.t1!.reviewRetries = MAX_REVIEW_RETRIES
     q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: true }, 6))
     expect(q.state).not.toBe('REVIEWING')
     let r = reviewingVisual()
@@ -234,7 +234,7 @@ describe('integración: lanzamiento de una subtarea visual creativa', () => {
     await $.turn.start({ turnId: 'n1', text: '' } as never)
     await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'block', reason: 'replanificar' } as never)
     const second = visualRaw()
-    second.tasks[0].model = 'sonnet'
+    second.tasks[0]!.model = 'sonnet'
     const r = await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: second } as never)
     expect(String((r as { result?: unknown }).result)).toContain('automáticamente')
     expect(w.registered.filter(x => x.name === 'artifice-t1').map(x => x.model)).toEqual(['claude-opus-5-5', 'claude-sonnet-5-5'])
