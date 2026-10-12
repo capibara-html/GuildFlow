@@ -195,7 +195,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 - **Línea de estado** (`$.ui.status`): siempre dice qué pasa, por ejemplo "⏳ trabajando · Artífice en t1 (intento 2)", "✅ completada…" o "⚠ bloqueada, necesita tu decisión…".
 - **Aviso y notificación** al pasar a `DONE`, `BLOCKED`, `HALTED`, `PAUSED` o `AWAITING_APPROVAL`.
 - **Franja `AbovePrompt`:** estado, agentes en curso y siguiente paso. Se mantiene tras terminar.
-- **Panel lateral:** las cinco estaciones con iconos SVG estáticos y el estado completo. **Solo datos reales**, sin estimaciones.
+- **Panel lateral (tablón, Fase 3):** las cinco estaciones como sprites pixel art 32×32 originales y procedurales (`src/sprites.ts`), dibujados a 64 px, más el estado completo. **Solo datos reales**: un puesto está en faena si su rol tiene un agente en curso (`poseOf`). El Maestro muestra «!» cuando espera a la persona (`AWAITING_APPROVAL`, `BLOCKED`). La faena alterna dos fotogramas con SMIL discreto (0,6 s, `isInteractive`); el resto es un solo fotograma, atenuado en reposo. El botón «Animación: desactivar/activar» lo guarda en `$.store` (`boardAnim`). Cada sprite lleva un `alt` con el puesto y la pose, y la franja mantiene los iconos de 16 px.
 - **Capa temática** (`src/theme.ts`, opción `theme`: `gremio` por defecto o `sobrio`; Fase 3.1).
   - Cabecera de rol + dato llano en la línea de estado, la franja, el panel, los diálogos ("Sellar el pergamino", "Levantar el campamento"), los avisos con la voz de cada rol, la salida de `/quest`, `/quest-status` y `/quest-halt`, y la crónica final.
   - Lo que leen los modelos (briefs y respuestas de herramientas) sigue neutro.
@@ -205,5 +205,4 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - Worktrees y Artífices en paralelo: solo se admite `isolation: none`, en secuencial.
 - Escriba con modelo.
-- Tablón pixel art animado.
 - Empaquetado como marketplace.

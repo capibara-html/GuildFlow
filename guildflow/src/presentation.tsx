@@ -1,10 +1,9 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
-// Separada del dominio: el futuro tablón pixel art sustituye esta capa sin tocar machine.ts.
-import type { AgentRecord, Limits, Plan, Quest, Role } from '../types'
+// Separada del dominio: el tablón pixel art (src/sprites.ts) se dibuja aquí sin tocar machine.ts.
+import type { AgentRecord, Limits, Plan, Quest } from '../types'
 import { agentBudget, elapsedMs, nextStep, progressSummary } from './machine'
+import { sprite, type Pose, type Station } from './sprites'
 import { LABELS, stateTitle, voice, type Theme } from './theme'
-
-type Station = Role | 'maestro' | 'escriba'
 
 export const STATIONS: Record<Station, { name: string; place: string; glyph: string; color: string }> = {
   maestro: { name: 'Maestro del Gremio', place: 'mostrador de misiones', glyph: '⚖', color: '#d4a72c' },
@@ -43,6 +42,14 @@ export const stateColor = (s: string) => STATE_COLOR[s] ?? '#6fa8f5'
 
 /** Agentes que se muestran como activos: solo los que el registro tiene en curso (nunca perdidos). */
 export const liveAgents = (q: Quest) => q.agents.filter(a => a.status === 'running')
+
+/** Pose de cada puesto del tablón, solo con datos reales: un rol trabaja si tiene un agente en curso. */
+export function poseOf(q: Quest, s: Station): Pose {
+  if (s === 'maestro') return ['AWAITING_APPROVAL', 'BLOCKED'].includes(q.state) ? 'alert' : ['INTAKE', 'PLANNING', 'DISPATCH', 'VERIFYING', 'FIXING'].includes(q.state) && !liveAgents(q).length ? 'work' : 'rest'
+  if (s === 'escriba') return q.state === 'DONE' ? 'work' : 'rest'
+  return liveAgents(q).some(a => a.role === s) ? 'work' : 'rest'
+}
+const POSE_TEXT: Record<Pose, string> = { work: 'en faena', rest: 'en reposo', alert: 'te necesita' }
 
 export function agentLine(a: AgentRecord, now: number): string {
   const st = STATIONS[a.role]
@@ -182,26 +189,34 @@ export function band(el: El, q: Quest, now: number, desktop: boolean, theme: The
   )
 }
 
-/** Panel lateral: las cinco estaciones del gremio y el tablón de criterios. */
-export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio') {
-  const { Box, Text, Svg } = el as Record<string, any>
+/** Panel lateral: las cinco estaciones del gremio (pixel art en Desktop) y el tablón de criterios. */
+export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio', anim = true, toggleAnim?: () => void) {
+  const { Box, Text, Svg, Button } = el as Record<string, any>
   if (!q) return <Text dimColor>{theme === 'gremio' ? 'El tablón está vacío. Escribe /quest <petición> para abrir una misión.' : 'Sin misión. Escribe /quest <petición> para abrir una.'}</Text>
   const occupied = (s: Station) =>
     s === 'maestro' ? q.state : s === 'escriba' ? `${q.progressMark} eventos` : liveAgents(q).find(a => a.role === s) ? (theme === 'gremio' ? 'en faena' : 'trabajando') : theme === 'gremio' ? 'en reposo' : 'libre'
-  const stations = (Object.keys(STATIONS) as Station[]).map(s => (
-    <Box key={s} flexDirection="row" gap={1}>
-      {desktop ? <Svg source={icon(s, 20)} alt={STATIONS[s].place} width={20} height={20} /> : <Text color={STATIONS[s].color}>{STATIONS[s].glyph}</Text>}
-      <Text color={STATIONS[s].color} bold>
-        {STATIONS[s].name}
-      </Text>
-      <Text dimColor>{`${STATIONS[s].place} · ${occupied(s)}`}</Text>
-    </Box>
-  ))
+  const stations = (Object.keys(STATIONS) as Station[]).map(s => {
+    const pose = poseOf(q, s)
+    return (
+      <Box key={s} flexDirection="row" gap={1} alignItems="center">
+        {desktop ? (
+          <Svg source={sprite(s, pose, anim)} alt={`${STATIONS[s].place}: ${STATIONS[s].name} ${POSE_TEXT[pose]}`} width={64} height={64} isInteractive={anim && pose === 'work' ? true : undefined} />
+        ) : (
+          <Text color={STATIONS[s].color}>{STATIONS[s].glyph}</Text>
+        )}
+        <Text color={STATIONS[s].color} bold>
+          {STATIONS[s].name}
+        </Text>
+        <Text dimColor>{`${STATIONS[s].place} · ${occupied(s)}`}</Text>
+      </Box>
+    )
+  })
   return (
     <Box flexDirection="column" gap={1}>
       <Text bold color={stateColor(q.state)}>{`Tablón de misiones · ${q.id} · ${q.state}`}</Text>
       {theme === 'gremio' ? <Text color={stateColor(q.state)}>{stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}</Text> : null}
       <Box flexDirection="column">{stations}</Box>
+      {desktop && toggleAnim ? <Button label={anim ? 'Animación: desactivar' : 'Animación: activar'} onPress={toggleAnim} /> : null}
       <Text>{statusText(q, now)}</Text>
     </Box>
   )

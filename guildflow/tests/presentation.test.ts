@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { agentSpawned, block, recover, startTask } from '../src/machine'
-import { APPROVAL_MAX, approvalDialog, approvalText, liveAgents, personStatus, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { APPROVAL_MAX, approvalDialog, approvalText, liveAgents, personStatus, poseOf, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { sprite, type Pose, type Station } from '../src/sprites'
 import { transitionEvent, voice } from '../src/theme'
 import { agent, approved, LIMITS, ok, planned } from './fixtures'
 
@@ -83,5 +84,32 @@ describe('capa temática', () => {
     expect(personStatus('gremio', q, 5)).toContain(statusText(q, 5))
     expect(personStatus('gremio', q, 5).split('\n')[0]).toContain('🏛️')
     expect(personStatus('sobrio', q, 5)).toBe(statusText(q, 5))
+  })
+})
+
+describe('tablón pixel art', () => {
+  test('pose de cada puesto según datos reales: agente en curso, espera a la persona, reposo', () => {
+    let q = ok(startTask(approved(), 't1', 3))
+    q = ok(agentSpawned(q, agent('a', 'artifice', 't1'), 3))
+    expect(poseOf(q, 'artifice')).toBe('work')
+    expect(poseOf(q, 'paladin')).toBe('rest')
+    expect(poseOf(q, 'maestro')).toBe('rest')
+    expect(poseOf(ok(recover(q, 4)), 'artifice')).toBe('rest')
+    expect(poseOf(planned(), 'maestro')).toBe('alert')
+    expect(poseOf(ok(block(q, 'x', 4)), 'maestro')).toBe('alert')
+  })
+  test('sprites: SVG acotado, sin script; solo la faena animada lleva SMIL', () => {
+    const stations: Station[] = ['maestro', 'archimago', 'artifice', 'paladin', 'escriba']
+    const poses: Pose[] = ['work', 'rest', 'alert']
+    for (const s of stations)
+      for (const p of poses)
+        for (const a of [true, false]) {
+          const svg = sprite(s, p, a)
+          expect(svg.length).toBeLessThan(131072)
+          expect(svg).not.toMatch(/script|on[a-z]+=/i)
+          expect(svg.includes('<animate')).toBe(p === 'work' && a)
+        }
+    expect(sprite('maestro', 'alert', true)).not.toBe(sprite('maestro', 'rest', true))
+    expect(sprite('artifice', 'work', false)).not.toBe(sprite('artifice', 'rest', false))
   })
 })

@@ -233,6 +233,8 @@ declare module 'claude-code' {
       view: Quest | null
       /** Marca de carga: presente tras una recarga del mod, ausente tras reiniciar Desktop. */
       boot: { sessionId: string; at: number } | null
+      /** Animación SMIL del tablón (interruptor del panel); null = aún no leída de $.store. */
+      anim: boolean | null
     }
   }
 }

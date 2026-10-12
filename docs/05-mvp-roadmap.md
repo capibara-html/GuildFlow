@@ -61,6 +61,8 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 - Activos propios. Decidir entre generación procedural (como `portraitArt.ts`, pero con diseños nuestros) y sprites dibujados (Aseprite está disponible en este entorno como MCP).
 - Créditos y licencias en `ASSETS.md`.
 
+**Estado (2026-10-12):** 3.1, la capa temática, está hecha. El tablón también: sprites procedurales en `src/sprites.ts`, SMIL de 2 fotogramas con interruptor y licencias en `ASSETS.md`. Falta verlo en vivo en Desktop y medir los fps con `Client` antes de pensar en animación continua.
+
 **Antes de la Fase 3** (recomendado tras la Fase 2):
 - Opcional: V16b de `10-test-results.md` (reinicio con un Artífice en curso).
 - Hacer una misión real en un repositorio propio, no en el testbed, para medir el coste y los diálogos en un caso de uso real.

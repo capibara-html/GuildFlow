@@ -18,6 +18,8 @@ type $ = EngineInterface
 
 const PANE = 'guildflow'
 const viewA = atom({ plugin: 'guildflow', key: 'view' } as const, null as Quest | null)
+/** Animación del tablón: null = aún no leída de $.store (allí persiste entre reinicios). */
+const animA = atom({ plugin: 'guildflow', key: 'anim' } as const, null as boolean | null)
 const bootA = atom({ plugin: 'guildflow', key: 'boot' } as const, null as { sessionId: string; at: number } | null)
 
 // Estado del módulo: se reconstruye en cada carga desde .guildflow/ ($.state solo sirve para dibujar y detectar recargas).
@@ -1001,6 +1003,11 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const q = await read($, viewA)
-    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', themeOf(OPTIONS))
+    const anim = (await read($, animA)) ?? (await $.store.get('boardAnim')) !== false
+    const toggle = async () => {
+      await $.store.set('boardAnim', !anim)
+      await update($, animA, () => !anim)
+    }
+    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', themeOf(OPTIONS), anim, toggle)
   })
 }
