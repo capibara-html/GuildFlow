@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 250" width="900" height="250" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+<defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="#cfc6b8"/></marker>
+<marker id="r" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="#f07a5d"/></marker></defs>
+<rect width="100%" height="100%" rx="12" fill="#1e1620"/>
+<text x="20" y="34" font-size="17" font-weight="700" fill="#e2c063">El ciclo de una misión</text>
+<text x="20" y="52" font-size="12" fill="#a59d8f">El mod hace cumplir cada paso en código: sin aprobación no se forja, y solo cuentan las pruebas que ejecuta él</text>
+<rect x="10" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#efe2bf" stroke-width="2"/>
+<text x="66" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#efe2bf">/quest</text>
+<text x="66" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">tu petición</text>
+<line x1="123" y1="100" x2="136" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="138" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#8f7ae0" stroke-width="2"/>
+<text x="194" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#8f7ae0">Plan</text>
+<text x="194" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">Maestro o Archimago</text>
+<line x1="251" y1="100" x2="264" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="266" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#efe2bf" stroke-width="2"/>
+<text x="322" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#efe2bf">Aprobación</text>
+<text x="322" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">tú, en un diálogo</text>
+<line x1="379" y1="100" x2="392" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="394" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#ec8f50" stroke-width="2"/>
+<text x="450" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#ec8f50">Forja</text>
+<text x="450" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">Artífice implementa</text>
+<line x1="507" y1="100" x2="520" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="522" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#ffc85a" stroke-width="2"/>
+<text x="578" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#ffc85a">Prueba de fuego</text>
+<text x="578" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">el mod corre los tests</text>
+<line x1="635" y1="100" x2="648" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="650" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#8db2e6" stroke-width="2"/>
+<text x="706" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#8db2e6">Juicio</text>
+<text x="706" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">Paladín revisa</text>
+<line x1="763" y1="100" x2="776" y2="100" stroke="#cfc6b8" stroke-width="2" marker-end="url(#a)"/>
+<rect x="778" y="70" width="112" height="60" rx="8" fill="#2b2230" stroke="#9ca4b1" stroke-width="2"/>
+<text x="834" y="96" text-anchor="middle" font-size="14" font-weight="700" fill="#9ca4b1">Crónica</text>
+<text x="834" y="114" text-anchor="middle" font-size="10.5" fill="#cfc6b8">Escriba: resumen</text>
+<path d="M578 131V160H450V133" fill="none" stroke="#f07a5d" stroke-width="2" marker-end="url(#r)"/>
+<path d="M706 131V160H578" fill="none" stroke="#f07a5d" stroke-width="2"/>
+<text x="458" y="177" font-size="11.5" fill="#f07a5d">si falla: vuelve a la forja con la evidencia (intentos limitados)</text>
+<line x1="514" y1="182" x2="514" y2="204" stroke="#f07a5d" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#r)"/>
+<text x="300" y="226" font-size="12.5" font-weight="700" fill="#f07a5d">Encrucijada: el mismo fallo se repite o se alcanza un límite → la misión se bloquea y decides tú</text>
+</svg>

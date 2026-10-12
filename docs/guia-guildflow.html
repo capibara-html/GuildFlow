@@ -142,8 +142,18 @@
   <ul>
     <li><strong>Línea de estado</strong> bajo el cuadro de texto: trabajando, completada, bloqueada o esperando tu aprobación.</li>
     <li><strong>Franja</strong> encima del cuadro de texto: agentes en curso y siguiente paso.</li>
-    <li><strong>Panel «Gremio · GuildFlow»</strong>: la sala del gremio en pixel art, botones de acción, progreso, encargos con el veredicto de cada criterio, tesoro (consumo frente a límites) y bitácora reciente.</li>
+    <li><strong>Panel «Gremio · GuildFlow»</strong>: la oficina del gremio en pixel art, botones de acción, progreso, encargos con el veredicto de cada criterio, tesoro (consumo frente a límites) y bitácora reciente.</li>
   </ul>
+  <h3>La oficina del gremio</h3>
+  <p><img src="img/estados.png" alt="Cuatro estados de la oficina: esperando aprobación, Artífice implementando, misión bloqueada y misión completada" style="width:100%;max-width:800px;image-rendering:pixelated;border-radius:8px"></p>
+  <p>Cada personaje está en su puesto: el Maestro tras el mostrador, el Archimago en su mesa, el Artífice en la fragua, el Paladín en el campo de pruebas y el Escriba en su atril. Su pose sale de los datos del mod, no de lo que diga un agente:</p>
+  <ul>
+    <li>Un personaje <strong>trabaja</strong> solo si su agente figura en curso. Con la misión en pausa, detenida o bloqueada, nadie trabaja.</li>
+    <li>Las insignias son estáticas: <strong>«!» dorada</strong>, espera tu aprobación; <strong>«!» roja</strong>, bloqueo; <strong>«?» gris</strong>, agente perdido tras un reinicio; <strong>✓</strong>, misión cumplida.</li>
+    <li>El <strong>tablón de encargos</strong> tiene una nota por subtarea, con el color de su estado, y la activa lleva marco dorado. La <strong>placa</strong> del mostrador resume el estado global.</li>
+    <li>El <strong>cofre</strong> se llena según el consumo real del presupuesto, y la pila de hojas del Escriba crece con la bitácora.</li>
+  </ul>
+  <p>Debajo de la escena, el panel muestra el estado real con la subtarea y el intento, quién hace qué en texto y las secciones de progreso, encargos, tesoro y bitácora. En la terminal todo es texto, con la misma información.</p>
 </section>
 
 <section id="instalar">
@@ -161,10 +171,10 @@
   <p>En una sesión de Claude Code en terminal:</p>
   <pre><code>/plugin install guildflow --marketplace capibara-html/GuildFlow</code></pre>
   <p>Responde <code>y</code> para añadir el marketplace, elige el ámbito (el de usuario es el primero) y ajusta las opciones en la pantalla que aparece. Después puedes cambiarlas con <code>/plugin configure guildflow@guildflow</code>.</p>
-  <div class="note warn"><strong>El repositorio es privado.</strong> Esa orden solo funciona con una cuenta de GitHub que tenga acceso. Para instalarlo en otra máquina sin acceso, usa una copia local del repositorio (abajo) o haz público el repositorio.</div>
 
-  <h3>Desde una carpeta local</h3>
-  <pre><code>claude plugin marketplace add C:\ruta\a\GuildFlow
+  <h3>Desde una copia local</h3>
+  <pre><code>git clone https://github.com/capibara-html/GuildFlow.git
+claude plugin marketplace add ./GuildFlow
 claude plugin install guildflow@guildflow</code></pre>
 
   <h3>Para desarrollarlo</h3>
@@ -206,7 +216,8 @@ claude plugin install guildflow@guildflow</code></pre>
     <tbody>
       <tr><td>⛔ Detener misión</td><td><code>/quest-halt</code>, con confirmación previa.</td></tr>
       <tr><td>🏕️ Reanudar · 📜 Revisar el plan</td><td><code>/quest-resume</code>, con su diálogo; después arranca el turno del Maestro.</td></tr>
-      <tr><td>Animación: activar / desactivar</td><td>Anima o congela los sprites. La preferencia se guarda.</td></tr>
+      <tr><td>Estado completo · Ocultar estado</td><td><code>/quest-status</code>: despliega el estado completo dentro del panel.</td></tr>
+      <tr><td>Animación: activar / desactivar</td><td>Anima la oficina (dos fotogramas, solo lo que trabaja) o la deja en un único fotograma. La preferencia se guarda.</td></tr>
     </tbody>
   </table></div>
   <h3>Herramienta <code>quest</code> (la usa el Maestro)</h3>
@@ -363,7 +374,6 @@ docker pull python:3.12-alpine</code></pre>
     <li><strong>Reinicio con un Artífice a medias.</strong> Está probado con tests, no en vivo. Los agentes perdidos no se relanzan solos: decides tú con <code>/quest-resume</code>.</li>
     <li><strong>Tachado de secretos.</strong> Solo con patrones conocidos en <code>runs/</code> y <code>log.jsonl</code>. No pongas secretos en la salida de tus tests.</li>
     <li><strong>Idioma.</strong> La interfaz y el resumen del Escriba están en español.</li>
-    <li><strong>Marketplace privado.</strong> La instalación desde GitHub requiere acceso al repositorio.</li>
   </ul>
 </section>
 

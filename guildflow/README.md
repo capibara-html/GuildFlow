@@ -97,7 +97,7 @@ Los valores fuera de rango se acotan a los topes: un límite no se puede desacti
 **Dónde ver el estado:**
 - La línea de estado bajo el cuadro de texto: trabajando, completada, bloqueada o esperando tu aprobación.
 - La franja encima del cuadro de texto.
-- El panel "Gremio · GuildFlow".
+- El panel "Gremio · GuildFlow": la oficina pixel art, con cada personaje según lo que hace de verdad su rol, más progreso, encargos, tesoro y bitácora (`docs/12-pixel-art-board.md`).
 
 **Recursos de terceros:** si el plan propone instalar un plugin, servidor MCP o skill, lo ves en el diálogo de aprobación y, si apruebas, **GuildFlow lo instala** (`claude mcp add …`, `claude plugin install …`). Si hace falta software descargable, te indica qué descargar y de dónde. Un recurso recién instalado puede no estar disponible hasta la próxima sesión.
 
@@ -151,10 +151,9 @@ Estructura y diseño: `docs/08-guildflow-implementation.md`. Resultados: `docs/1
 - Guía completa, con las limitaciones por tipo de proyecto (JVM en Windows, servicios externos, binarios, apps nativas…): `docs/guia-guildflow.html`.
 - En paralelo solo va la implementación (`maxParallelArtifices`); la integración, la verificación y la revisión siguen en serie, y las subtareas visuales no entran.
 - Sin sandbox por defecto: `sandbox: docker` aísla las comprobaciones, pero no el servidor de vista previa (ver el aviso).
-- El repositorio es privado: la instalación desde GitHub requiere acceso.
 - El esfuerzo aplicado no se puede confirmar desde la API: se impone en cada petición, pero la respuesta no lo devuelve.
 - El reinicio completo de Desktop con una misión a medias no se ha probado en vivo en esta fase (sí en la PoC).
 
 ## Licencia
 
-MIT. Los iconos son originales: ver `ASSETS.md`.
+MIT. Todo el arte (oficina, personajes, iconos) es original: ver `ASSETS.md`. Para editarlo: `src/art.ts` y `node scripts/art.mjs`.
