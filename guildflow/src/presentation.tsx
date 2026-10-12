@@ -1,8 +1,8 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
 // Separada del dominio: el tablón pixel art (src/sprites.ts) se dibuja aquí sin tocar machine.ts.
-import type { AgentRecord, Limits, Plan, Quest } from '../types'
-import { agentBudget, elapsedMs, nextStep, progressSummary } from './machine'
-import { sprite, type Pose, type Station } from './sprites'
+import type { AgentRecord, Limits, Plan, Quest, TaskStatus } from '../types'
+import { agentBudget, elapsedMs, isActive, isStopped, nextStep, progressSummary } from './machine'
+import { scene, type Pose, type Station } from './sprites'
 import { LABELS, stateTitle, voice, type Theme } from './theme'
 
 export const STATIONS: Record<Station, { name: string; place: string; glyph: string; color: string }> = {
@@ -189,35 +189,164 @@ export function band(el: El, q: Quest, now: number, desktop: boolean, theme: The
   )
 }
 
-/** Panel lateral: las cinco estaciones del gremio (pixel art en Desktop) y el tablón de criterios. */
-export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio', anim = true, toggleAnim?: () => void) {
+/** Una línea de la bitácora del panel. */
+export type Entry = { at: number; text: string }
+
+/** Bitácora para la persona: solo los eventos de la máquina que cuentan algo (sin tool.call ni consumo). */
+export function chronicle(ev: string, d: Record<string, any>, at: number): Entry | null {
+  const who = (r: unknown) => STATIONS[r as Station]?.name ?? String(r)
+  const text: Record<string, () => string | null> = {
+    'quest.created': () => 'Misión abierta',
+    'plan.submitted': () => `Plan presentado (${(d.tasks ?? []).length} subtareas)`,
+    'plan.approved': () => `Plan aprobado${d.by === 'auto' ? ' automáticamente' : ''}`,
+    'plan.rejected': () => 'Plan rechazado',
+    'task.started': () => `${d.taskId}: intento ${d.attempt}`,
+    'agent.spawned': () => `${who(d.role)} entra${d.taskId ? ` en ${d.taskId}` : ''}`,
+    'agent.finished': () => `${who(d.role)} termina${d.partial ? ' (parcial)' : ''}`,
+    'agent.lost': () => `${who(d.role)} perdido${d.taskId ? ` en ${d.taskId}` : ''}`,
+    'check.recorded': () => `Comprobación ${d.checkId}: ${d.pass ? 'PASS' : 'FAIL'}`,
+    'review.verdict': () => `Paladín: ${d.criterionId} ${d.verdict}`,
+    'round.failed': () => `${d.taskId}: ronda fallida`,
+    'task.done': () => `${d.taskId} completada`,
+    'quest.resumed': () => `Reanudada en ${d.to}`,
+    state: () => (['AWAITING_APPROVAL', 'BLOCKED', 'HALTED', 'PAUSED', 'DONE'].includes(d.to) ? `${d.to}${d.reason ? `: ${d.reason}` : ''}` : null),
+  }
+  const t = text[ev]?.()
+  return t ? { at, text: t.slice(0, 160) } : null
+}
+
+/** Qué botones ofrece el panel: los mismos caminos que /quest-halt y /quest-resume. */
+export function actions(q: Quest | null): { halt: boolean; resume: 'approve' | 'resume' | null } {
+  if (!q || !isActive(q)) return { halt: false, resume: null }
+  const resume = q.state === 'AWAITING_APPROVAL' ? 'approve' : isStopped(q) && !(q.state === 'HALTED' && q.haltKind === 'safety') ? 'resume' : null
+  return { halt: q.state !== 'HALTED' && q.state !== 'DONE', resume }
+}
+
+const clamp = (r: number) => (Number.isFinite(r) ? Math.max(0, Math.min(1, r)) : 0)
+const BAR = 120
+const bar = (r: number, color: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BAR} 8" width="${BAR}" height="8" shape-rendering="crispEdges"><rect width="${BAR}" height="8" fill="#8080803a"/><rect width="${Math.round(clamp(r) * BAR)}" height="8" fill="${color}"/></svg>`
+const textBar = (r: number) => '█'.repeat(Math.round(clamp(r) * 12)).padEnd(12, '░')
+/** Límites: azul con holgura, ámbar desde el 70 %, rojo desde el 90 %. */
+export const limitColor = (r: number) => (r >= 0.9 ? '#e74c3c' : r >= 0.7 ? '#e67e22' : '#6fa8f5')
+const VERDICT: Record<string, string> = { PASS: '✔', FAIL: '✘', INCONCLUSIVE: '?', NOT_RUN: '·' }
+const TASK: Record<TaskStatus, { glyph: string; color?: string }> = {
+  pending: { glyph: '○' },
+  active: { glyph: '⚒', color: STATIONS.artifice.color },
+  fixing: { glyph: '⚒', color: STATIONS.artifice.color },
+  verifying: { glyph: '⚖', color: STATIONS.maestro.color },
+  reviewing: { glyph: '⛨', color: STATIONS.paladin.color },
+  done: { glyph: '✔', color: '#2ecc71' },
+  blocked: { glyph: '⚠', color: '#e74c3c' },
+}
+const SECTION: Record<Theme, Record<'progress' | 'tasks' | 'treasure' | 'log', string>> = {
+  gremio: { progress: '🧭 Progreso', tasks: '⚒️ Encargos', treasure: '💰 Tesoro', log: '🪶 Bitácora' },
+  sobrio: { progress: 'Progreso', tasks: 'Subtareas', treasure: 'Consumo y límites', log: 'Registro reciente' },
+}
+
+/** Lo que el panel necesita además de la misión: preferencia de animación, bitácora y acciones. */
+export type Board = { anim: boolean; recent: Entry[]; onToggleAnim?: () => void; onHalt?: () => void; onResume?: () => void }
+
+/** Panel lateral: la sala del gremio, acciones, progreso, encargos, tesoro y bitácora. Solo datos reales. */
+export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio', board: Board = { anim: true, recent: [] }) {
   const { Box, Text, Svg, Button } = el as Record<string, any>
   if (!q) return <Text dimColor>{theme === 'gremio' ? 'El tablón está vacío. Escribe /quest <petición> para abrir una misión.' : 'Sin misión. Escribe /quest <petición> para abrir una.'}</Text>
-  const occupied = (s: Station) =>
-    s === 'maestro' ? q.state : s === 'escriba' ? `${q.progressMark} eventos` : liveAgents(q).find(a => a.role === s) ? (theme === 'gremio' ? 'en faena' : 'trabajando') : theme === 'gremio' ? 'en reposo' : 'libre'
-  const stations = (Object.keys(STATIONS) as Station[]).map(s => {
-    const pose = poseOf(q, s)
-    return (
-      <Box key={s} flexDirection="row" gap={1} alignItems="center">
-        {desktop ? (
-          <Svg source={sprite(s, pose, anim)} alt={`${STATIONS[s].place}: ${STATIONS[s].name} ${POSE_TEXT[pose]}`} width={64} height={64} isInteractive={anim && pose === 'work' ? true : undefined} />
-        ) : (
-          <Text color={STATIONS[s].color}>{STATIONS[s].glyph}</Text>
-        )}
-        <Text color={STATIONS[s].color} bold>
-          {STATIONS[s].name}
-        </Text>
-        <Text dimColor>{`${STATIONS[s].place} · ${occupied(s)}`}</Text>
-      </Box>
-    )
-  })
+  const g = theme === 'gremio'
+  const sec = SECTION[theme]
+  const stations = Object.keys(STATIONS) as Station[]
+  const poses = Object.fromEntries(stations.map(s => [s, poseOf(q, s)])) as Record<Station, Pose>
+  const busy = stations.filter(s => poses[s] !== 'rest')
+  const taskOf = (s: Station) => liveAgents(q).find(a => a.role === s)?.taskId
+  const who = busy.length
+    ? busy.map(s => `${STATIONS[s].glyph} ${STATIONS[s].name} ${POSE_TEXT[poses[s]]}${taskOf(s) ? ` · ${taskOf(s)}` : ''}`).join('   ')
+    : g
+      ? 'Todo el gremio en reposo'
+      : 'Sin agentes en curso'
+  const meter = (label: string, r: number, value: string, color: string) => (
+    <Box key={label} flexDirection="row" gap={1} alignItems="center">
+      <Text>{label.padEnd(12)}</Text>
+      {desktop ? <Svg source={bar(r, color)} alt={`${label}: ${value}`} width={BAR} height={8} /> : <Text color={color}>{textBar(r)}</Text>}
+      <Text dimColor>{value}</Text>
+    </Box>
+  )
+  const ratio = (a: number, b: number) => (b > 0 ? a / b : 0)
+  const limit = (label: string, a: number, b: number, value: string) => meter(label, ratio(a, b), value, limitColor(ratio(a, b)))
+  const p = progressSummary(q)
+  const u = q.usage
+  const L = q.limits
+  const spent = u.mainTokens + u.agentTokens
+  const act = actions(q)
   return (
     <Box flexDirection="column" gap={1}>
-      <Text bold color={stateColor(q.state)}>{`Tablón de misiones · ${q.id} · ${q.state}`}</Text>
-      {theme === 'gremio' ? <Text color={stateColor(q.state)}>{stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}</Text> : null}
-      <Box flexDirection="column">{stations}</Box>
-      {desktop && toggleAnim ? <Button label={anim ? 'Animación: desactivar' : 'Animación: activar'} onPress={toggleAnim} /> : null}
-      <Text>{statusText(q, now)}</Text>
+      <Box flexDirection="column">
+        <Text bold color={stateColor(q.state)}>{`Tablón de misiones · ${q.id} · ${q.state}`}</Text>
+        <Text color={stateColor(q.state)}>{stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}</Text>
+        <Text dimColor>{q.request.slice(0, 200)}</Text>
+      </Box>
+      {desktop ? (
+        <Svg
+          source={scene(poses, board.anim)}
+          alt={`Sala del gremio: ${stations.map(s => `${STATIONS[s].name} ${POSE_TEXT[poses[s]]}`).join(', ')}`}
+          isInteractive={board.anim && busy.some(s => poses[s] === 'work') ? true : undefined}
+        />
+      ) : null}
+      <Text>{who}</Text>
+      <Box flexDirection="row" gap={1}>
+        {act.halt && board.onHalt ? <Button key="halt" label={g ? '⛔ Detener misión' : 'Detener misión'} onPress={board.onHalt} /> : null}
+        {act.resume && board.onResume ? <Button key="resume" label={act.resume === 'approve' ? (g ? '📜 Revisar el plan' : 'Revisar el plan') : g ? '🏕️ Reanudar' : 'Reanudar'} onPress={board.onResume} /> : null}
+        {desktop && board.onToggleAnim ? <Button key="anim" label={board.anim ? 'Animación: desactivar' : 'Animación: activar'} onPress={board.onToggleAnim} /> : null}
+      </Box>
+      <Box flexDirection="column">
+        <Text bold>{sec.progress}</Text>
+        {meter('Criterios', ratio(p.criteriaPassed, p.criteriaTotal), `${p.criteriaPassed}/${p.criteriaTotal}`, '#2ecc71')}
+        {meter('Subtareas', ratio(p.tasksDone, p.tasksTotal), `${p.tasksDone}/${p.tasksTotal}`, '#2ecc71')}
+        <Text dimColor>{`Siguiente: ${nextStep(q)}`}</Text>
+      </Box>
+      <Box flexDirection="column">
+        <Text bold>{sec.tasks}</Text>
+        {q.plan?.tasks.length ? (
+          q.plan.tasks.map(t => {
+            const pr = q.progress[t.id]
+            const st = TASK[pr?.status ?? 'pending']
+            const marks = t.criteria.map(c => {
+              const ev = pr?.evidence[c.id]
+              return ev && ev.round === pr.round ? (VERDICT[ev.verdict] ?? '·') : '·'
+            })
+            return (
+              <Box key={t.id} flexDirection="column">
+                <Text color={st.color} dimColor={!st.color} bold={t.id === q.activeTask}>
+                  {`${st.glyph} ${t.id} ${t.title}  ${marks.join('')}  · intento ${pr?.attempts ?? 0}/${t.maxAttempts + (pr?.bonusAttempts ?? 0)}`}
+                </Text>
+                {pr?.lastFailure && pr.status !== 'done' ? <Text dimColor>{`   último fallo: ${pr.lastFailure.slice(0, 160)}`}</Text> : null}
+              </Box>
+            )
+          })
+        ) : (
+          <Text dimColor>{g ? 'El pergamino aún no tiene encargos.' : 'Sin plan todavía.'}</Text>
+        )}
+      </Box>
+      <Box flexDirection="column">
+        <Text bold>{sec.treasure}</Text>
+        {limit('Tokens', spent, L.tokenBudgetPerQuest, `${fmtTokens(spent)} / ${fmtTokens(L.tokenBudgetPerQuest)}`)}
+        {u.costStartUsd !== null ? limit('Coste', u.costUsd, L.costBudgetUsd, `≈$${u.costUsd.toFixed(2)} / $${L.costBudgetUsd}`) : <Text dimColor>{'Coste        no disponible'}</Text>}
+        {limit('Tiempo', elapsedMs(q, now), L.wallClockMinutes * 60_000, `${fmtDur(elapsedMs(q, now))} / ${L.wallClockMinutes} min`)}
+        {limit('Agentes', q.agentsSpawned, agentBudget(q), `${q.agentsSpawned} / ${agentBudget(q)}`)}
+        {limit('Iteraciones', q.iterations, L.maxQuestIterations, `${q.iterations} / ${L.maxQuestIterations}`)}
+        {limit('Archivos', q.filesWritten.length, L.maxFilesChanged, `${q.filesWritten.length} / ${L.maxFilesChanged}`)}
+        {u.ratePercent !== null ? limit('Suscripción', u.ratePercent, L.rateLimitPercent, `${u.ratePercent}% / ${L.rateLimitPercent}%`) : null}
+      </Box>
+      <Box flexDirection="column">
+        <Text bold>{sec.log}</Text>
+        {board.recent.length ? (
+          board.recent.map((r, i) => (
+            <Text key={`${r.at}-${i}`} dimColor={i > 0}>
+              {`${fmtDur(now - r.at).padStart(6)} · ${r.text}`}
+            </Text>
+          ))
+        ) : (
+          <Text dimColor>(sin eventos todavía)</Text>
+        )}
+      </Box>
     </Box>
   )
 }

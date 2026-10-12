@@ -130,21 +130,26 @@ function frame(s: Station, f: 0 | 1 | 'rest', alert = false): string {
   return rects(outline(g))
 }
 
+const STATIONS: Station[] = ['maestro', 'archimago', 'artifice', 'paladin', 'escriba']
+const GAP = 2
+const W = STATIONS.length * N + (STATIONS.length - 1) * GAP
+const swap = (from: string) => `<animate attributeName="opacity" values="${from}" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/>`
+
+/** Un puesto: en faena y animado alterna los dos fotogramas; si no, un solo fotograma (en reposo, atenuado). */
+function post(s: Station, pose: Pose, animate: boolean): string {
+  if (pose === 'work') return animate ? `<g>${frame(s, 0)}${swap('1;0')}</g><g opacity="0">${frame(s, 1)}${swap('0;1')}</g>` : frame(s, 1)
+  return `<g${pose === 'rest' ? ' opacity="0.6"' : ''}>${frame(s, 'rest', pose === 'alert')}</g>`
+}
+
 const cache = new Map<string, string>()
-/** SVG del puesto: en faena y animado alterna los dos fotogramas; si no, un solo fotograma (en reposo, atenuado). */
-export function sprite(s: Station, pose: Pose, animate: boolean, px = 64): string {
-  const key = `${s}|${pose}|${animate}|${px}`
+/** La sala del gremio: los cinco puestos en fila sobre un suelo de tablones, a 2× por defecto. */
+export function scene(poses: Record<Station, Pose>, animate: boolean, scale = 2): string {
+  const key = `${STATIONS.map(s => poses[s]).join(',')}|${animate}|${scale}`
   const hit = cache.get(key)
   if (hit) return hit
-  const alert = pose === 'alert'
-  const swap = (from: string) => `<animate attributeName="opacity" values="${from}" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/>`
-  const inner =
-    pose === 'work' && animate
-      ? `<g>${frame(s, 0)}${swap('1;0')}</g><g opacity="0">${frame(s, 1)}${swap('0;1')}</g>`
-      : pose === 'work'
-        ? frame(s, 1)
-        : `<g${pose === 'rest' ? ' opacity="0.6"' : ''}>${frame(s, 'rest', alert)}</g>`
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${N} ${N}" width="${px}" height="${px}" shape-rendering="crispEdges">${inner}</svg>`
+  const floor = `<rect x="0" y="${N}" width="${W}" height="2" fill="${P.wood}"/><rect x="0" y="${N + 2}" width="${W}" height="2" fill="${P.woodL}"/>`
+  const posts = STATIONS.map((s, i) => `<g transform="translate(${i * (N + GAP)} 0)">${post(s, poses[s], animate)}</g>`).join('')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${N + 4}" width="${W * scale}" height="${(N + 4) * scale}" shape-rendering="crispEdges">${floor}${posts}</svg>`
   cache.set(key, svg)
   return svg
 }

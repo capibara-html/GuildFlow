@@ -195,7 +195,13 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 - **Línea de estado** (`$.ui.status`): siempre dice qué pasa, por ejemplo "⏳ trabajando · Artífice en t1 (intento 2)", "✅ completada…" o "⚠ bloqueada, necesita tu decisión…".
 - **Aviso y notificación** al pasar a `DONE`, `BLOCKED`, `HALTED`, `PAUSED` o `AWAITING_APPROVAL`.
 - **Franja `AbovePrompt`:** estado, agentes en curso y siguiente paso. Se mantiene tras terminar.
-- **Panel lateral (tablón, Fase 3):** las cinco estaciones como sprites pixel art 32×32 originales y procedurales (`src/sprites.ts`), dibujados a 64 px, más el estado completo. **Solo datos reales**: un puesto está en faena si su rol tiene un agente en curso (`poseOf`). El Maestro muestra «!» cuando espera a la persona (`AWAITING_APPROVAL`, `BLOCKED`). La faena alterna dos fotogramas con SMIL discreto (0,6 s, `isInteractive`); el resto es un solo fotograma, atenuado en reposo. El botón «Animación: desactivar/activar» lo guarda en `$.store` (`boardAnim`). Cada sprite lleva un `alt` con el puesto y la pose, y la franja mantiene los iconos de 16 px.
+- **Panel lateral (tablón, Fase 3):** elementos nativos + SVG, en este orden:
+  - Cabecera: estado, línea temática y petición.
+  - **Sala del gremio:** un solo SVG con los cinco puestos pixel art (`scene` en `src/sprites.ts`) y una línea de texto con quién trabaja. Un puesto está en faena si su rol tiene un agente en curso (`poseOf`); el Maestro muestra «!» en `AWAITING_APPROVAL` y `BLOCKED`. SMIL de 2 fotogramas solo en la faena.
+  - **Acciones** (`actions`): «Detener misión» pide confirmación y sigue el camino de `/quest-halt`; «Reanudar» o «Revisar el plan» sigue el de `/quest-resume`, con su diálogo, y después arranca el turno del Maestro; «Animación» se guarda en `$.store` (`boardAnim`). Aprobar sigue siendo solo por el diálogo.
+  - **Progreso** (barras de criterios y subtareas, siguiente paso), **Encargos** (estado, veredicto por criterio ✔ ✘ ? ·, intentos y último fallo) y **Tesoro** (tokens, coste, tiempo, agentes, iteraciones, archivos y suscripción frente a su límite: azul, ámbar desde el 70 %, rojo desde el 90 %).
+  - **Bitácora:** los 8 últimos eventos legibles de la misión (`chronicle`), sin `tool.call` ni consumo, sembrados desde `log.jsonl` al cargar.
+  - En la terminal, las barras son texto (█░) y no hay sprites. Cada SVG lleva `alt` con su dato. **Solo datos reales.**
 - **Capa temática** (`src/theme.ts`, opción `theme`: `gremio` por defecto o `sobrio`; Fase 3.1).
   - Cabecera de rol + dato llano en la línea de estado, la franja, el panel, los diálogos ("Sellar el pergamino", "Levantar el campamento"), los avisos con la voz de cada rol, la salida de `/quest`, `/quest-status` y `/quest-halt`, y la crónica final.
   - Lo que leen los modelos (briefs y respuestas de herramientas) sigue neutro.

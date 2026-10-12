@@ -8,7 +8,7 @@ import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { ARTIFICE_SYSTEM, decide, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
-import { APPROVAL_MAX, approvalDialog, approvalText, band, pane, personStatus, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
 import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
@@ -20,6 +20,9 @@ const PANE = 'guildflow'
 const viewA = atom({ plugin: 'guildflow', key: 'view' } as const, null as Quest | null)
 /** Animación del tablón: null = aún no leída de $.store (allí persiste entre reinicios). */
 const animA = atom({ plugin: 'guildflow', key: 'anim' } as const, null as boolean | null)
+/** Bitácora del panel (lo más reciente primero), de la misión `quest`. */
+const recentA = atom({ plugin: 'guildflow', key: 'recent' } as const, { quest: null, items: [] } as { quest: string | null; items: Entry[] })
+const RECENT_MAX = 8
 const bootA = atom({ plugin: 'guildflow', key: 'boot' } as const, null as { sessionId: string; at: number } | null)
 
 // Estado del módulo: se reconstruye en cada carga desde .guildflow/ ($.state solo sirve para dibujar y detectar recargas).
@@ -82,6 +85,31 @@ async function setView($: $) {
   if (important) void $.ui.notify(stateLine(snap, th), { title: th === 'gremio' ? 'Gremio · GuildFlow' : 'GuildFlow' }).catch(() => undefined)
 }
 
+/** Siembra la bitácora del panel con los eventos de la misión que ya están en log.jsonl (al cargarla). */
+async function seedRecent($: $, root: string) {
+  const id = QUEST?.id ?? null
+  const items: Entry[] = []
+  try {
+    const f = files(root).log
+    if (id && (await $.fs.exists(f)))
+      for (const line of (await $.fs.read(f)).split('\n')) {
+        if (!line.includes(id)) continue
+        try {
+          const o = JSON.parse(line)
+          const c = o.quest === id ? chronicle(o.ev, o, o.at) : null
+          if (c) items.push(c)
+        } catch {}
+      }
+  } catch {} // sin bitácora el panel sigue funcionando
+  await update($, recentA, () => ({ quest: id, items: items.slice(-RECENT_MAX).reverse() }))
+}
+
+/** Añade a la bitácora del panel lo que acaba de registrar la máquina. */
+async function pushRecent($: $, q: Quest, log: { ev: string; data: Raw }[], at: number) {
+  const add = log.map(l => chronicle(l.ev, l.data, at)).filter((x): x is Entry => x !== null).reverse()
+  if (add.length) await update($, recentA, r => ({ quest: q.id, items: [...add, ...(r.quest === q.id ? r.items : [])].slice(0, RECENT_MAX) }))
+}
+
 async function current($: $): Promise<Quest | null> {
   const root = await rootOf($)
   if (loaded && QUEST_ROOT === root) return QUEST
@@ -89,6 +117,7 @@ async function current($: $): Promise<Quest | null> {
   QUEST = l.quest
   QUEST_ROOT = root
   loaded = true
+  await seedRecent($, root)
   await setView($)
   return QUEST
 }
@@ -115,7 +144,9 @@ async function commit($: $, o: M.Outcome): Promise<M.Outcome> {
     const saved = await saveQuest(io($), o.quest)
     QUEST = saved
     await setView($)
-    await appendLog(io($), saved.project, o.log, { questId: saved.id, at: await $.clock.now() })
+    const at = await $.clock.now()
+    await appendLog(io($), saved.project, o.log, { questId: saved.id, at })
+    await pushRecent($, saved, o.log, at)
     return { ...o, quest: saved }
   } catch (err) {
     if (err instanceof Conflict) {
@@ -740,6 +771,7 @@ export const register: Register = (on, options) => {
       QUEST = l.quest
       QUEST_ROOT = root
       loaded = true
+      await seedRecent($, root)
       if (l.problems.length) {
         await quarantine(io($), root, await $.clock.now()).catch(() => undefined)
         await note($, 'load.problems', { problems: l.problems, source: l.source })
@@ -1004,10 +1036,29 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const q = await read($, viewA)
     const anim = (await read($, animA)) ?? (await $.store.get('boardAnim')) !== false
-    const toggle = async () => {
+    const recent = await read($, recentA)
+    const th = themeOf(OPTIONS)
+    // Los botones siguen el mismo camino que /quest-halt y /quest-resume (con sus diálogos); nada se salta la confirmación.
+    const onHalt = async () => {
+      let answer = ''
+      try {
+        answer = await $.ui.ask(`¿Detener la misión ${q?.id}? No se lanzarán más agentes; el trabajo se conserva y podrás reanudarla.`, { options: ['Detener', 'Seguir'], header: LABELS[th].header })
+      } catch {}
+      if (answer === 'Detener') $.ui.toast(await cmdHalt($), { timeoutMs: 8_000 })
+    }
+    const onResume = async () => {
+      const r = await cmdResume($)
+      $.ui.toast(`${PREFIX}: ${r.text}`, { timeoutMs: 8_000 })
+      if (r.ok && QUEST)
+        kick($, 'pane.resume', {
+          text: `${PREFIX}: la persona reanudó la misión ${QUEST.id} desde el panel. Eres el Maestro del Gremio: sigue la skill guildflow, consulta mcp__guildflow__quest {"action":"status"} y continúa desde el siguiente paso permitido sin esperar más instrucciones.`,
+        })
+    }
+    const onToggleAnim = async () => {
       await $.store.set('boardAnim', !anim)
       await update($, animA, () => !anim)
     }
-    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', themeOf(OPTIONS), anim, toggle)
+    const board = { anim, recent: recent.quest === q?.id ? recent.items : [], onHalt, onResume, onToggleAnim }
+    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', th, board)
   })
 }

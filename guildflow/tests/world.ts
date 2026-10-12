@@ -58,7 +58,7 @@ export function world(on: On, opts: { quest?: Quest; answers?: string[]; agentLi
   })
   on('prompt.submit', ($, e) => {
     w.prompts.push(e.text)
-    return { turnId: 't' } as never
+    return { text: e.text } as never
   })
   // AskUserQuestion: la "persona" responde con la siguiente respuesta preparada
   on('tool.call', { tool: 'AskUserQuestion' }, ($, e) => {

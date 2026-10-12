@@ -385,3 +385,32 @@ describe('capa temática en los diálogos', () => {
     expect(saved(w).state).toBe('DISPATCH')
   })
 })
+
+describe('panel del gremio', () => {
+  const mount = ($: any, surface: 'desktop' | 'terminal') => $.ui.mount({ plugin: 'guildflow', surface, component: 'Pane', props: { title: 'Gremio · GuildFlow' }, requestId: 'guildflow' })
+  for (const surface of ['desktop', 'terminal'] as const)
+    test(`${surface}: secciones con datos reales; Detener pide confirmación y Reanudar arranca al Maestro`, async ($, on) => {
+      const w = world(on, { quest: implementing(), answers: ['Detener', LABELS.gremio.resume] })
+      await call($, { tool: 'mcp__guildflow__quest', action: 'status' })
+      const ui = await mount($, surface)
+      for (const t of ['Encargos', 'Tesoro', 'Bitácora', 'Criterios', 'Tokens']) expect(await ui.find({ text: new RegExp(t) })).toBeDefined()
+      expect((await ui.findAll({ type: 'Svg' })).length > 0).toBe(surface === 'desktop')
+      expect(await ui.find({ key: 'resume' })).toBeUndefined()
+      await ui.press({ key: 'halt' })
+      expect(w.asked[0]).toContain('¿Detener la misión')
+      expect(saved(w).state).toBe('HALTED')
+      expect(await ui.find({ key: 'halt' })).toBeUndefined()
+      expect(await ui.find({ text: /HALTED/ })).toBeDefined() // la bitácora del panel recoge la parada
+      await ui.press({ key: 'resume' })
+      expect(saved(w).state).not.toBe('HALTED')
+      expect(w.prompts.some(p => p.includes('desde el panel'))).toBe(true)
+    })
+  test('cerrar el diálogo o «Seguir» no detiene la misión', async ($, on) => {
+    const w = world(on, { quest: implementing(), answers: ['Seguir'] })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'status' })
+    const ui = await mount($, 'desktop')
+    await ui.press({ key: 'halt' })
+    await ui.press({ key: 'halt' })
+    expect(saved(w).state).toBe('IMPLEMENTING')
+  })
+})

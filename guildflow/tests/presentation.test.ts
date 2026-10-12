@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { agentSpawned, block, recover, startTask } from '../src/machine'
-import { APPROVAL_MAX, approvalDialog, approvalText, liveAgents, personStatus, poseOf, stateLine, statusText, summaryMarkdown } from '../src/presentation'
-import { sprite, type Pose, type Station } from '../src/sprites'
+import { actions, APPROVAL_MAX, approvalDialog, approvalText, chronicle, limitColor, liveAgents, personStatus, poseOf, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { scene, type Pose, type Station } from '../src/sprites'
 import { transitionEvent, voice } from '../src/theme'
 import { agent, approved, LIMITS, ok, planned } from './fixtures'
 
@@ -98,18 +98,40 @@ describe('tablón pixel art', () => {
     expect(poseOf(planned(), 'maestro')).toBe('alert')
     expect(poseOf(ok(block(q, 'x', 4)), 'maestro')).toBe('alert')
   })
-  test('sprites: SVG acotado, sin script; solo la faena animada lleva SMIL', () => {
-    const stations: Station[] = ['maestro', 'archimago', 'artifice', 'paladin', 'escriba']
-    const poses: Pose[] = ['work', 'rest', 'alert']
-    for (const s of stations)
-      for (const p of poses)
-        for (const a of [true, false]) {
-          const svg = sprite(s, p, a)
-          expect(svg.length).toBeLessThan(131072)
-          expect(svg).not.toMatch(/script|on[a-z]+=/i)
-          expect(svg.includes('<animate')).toBe(p === 'work' && a)
-        }
-    expect(sprite('maestro', 'alert', true)).not.toBe(sprite('maestro', 'rest', true))
-    expect(sprite('artifice', 'work', false)).not.toBe(sprite('artifice', 'rest', false))
+  test('escena: SVG acotado aun con todo el gremio animado, sin script; SMIL solo con faena animada', () => {
+    const all = (p: Pose) => ({ maestro: p, archimago: p, artifice: p, paladin: p, escriba: p }) as Record<Station, Pose>
+    for (const p of ['work', 'rest', 'alert'] as Pose[])
+      for (const a of [true, false]) {
+        const svg = scene(all(p), a)
+        expect(svg.length).toBeLessThan(131072)
+        expect(svg).not.toMatch(/script|on[a-z]+=/i)
+        expect(svg.includes('<animate')).toBe(p === 'work' && a)
+      }
+    expect(scene({ ...all('rest'), maestro: 'alert' }, true)).not.toBe(scene(all('rest'), true))
+  })
+})
+
+describe('panel', () => {
+  test('bitácora: solo eventos que cuentan algo a la persona', () => {
+    expect(chronicle('check.recorded', { checkId: 'unit', pass: false }, 1)).toEqual({ at: 1, text: 'Comprobación unit: FAIL' })
+    expect(chronicle('agent.spawned', { role: 'paladin', taskId: 't1' }, 2)?.text).toBe('Paladín entra en t1')
+    expect(chronicle('state', { to: 'BLOCKED', reason: 'mismo fallo' }, 3)?.text).toBe('BLOCKED: mismo fallo')
+    expect(chronicle('state', { to: 'REVIEWING' }, 3)).toBeNull()
+    expect(chronicle('usage.request', {}, 4)).toBeNull()
+    expect(chronicle('tool.call', {}, 4)).toBeNull()
+  })
+  test('acciones: los mismos caminos que los comandos', () => {
+    const q = ok(startTask(approved(), 't1', 3))
+    expect(actions(q)).toEqual({ halt: true, resume: null })
+    expect(actions(planned())).toEqual({ halt: true, resume: 'approve' })
+    expect(actions(ok(block(q, 'x', 4)))).toEqual({ halt: true, resume: 'resume' })
+    expect(actions({ ...q, state: 'HALTED', haltKind: 'safety' })).toEqual({ halt: false, resume: null })
+    expect(actions({ ...q, state: 'LOGGED' })).toEqual({ halt: false, resume: null })
+    expect(actions(null)).toEqual({ halt: false, resume: null })
+  })
+  test('medidores de límites: azul, ámbar desde 70 %, rojo desde 90 %', () => {
+    expect(limitColor(0.5)).toBe('#6fa8f5')
+    expect(limitColor(0.7)).toBe('#e67e22')
+    expect(limitColor(0.95)).toBe('#e74c3c')
   })
 })
