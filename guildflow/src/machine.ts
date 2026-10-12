@@ -1,7 +1,7 @@
 // Máquina de estados de la misión. Pura y determinista: sin $, sin reloj propio, sin E/S.
 // Cada operación valida el estado y devuelve una misión NUEVA o un error; nunca muta la de entrada.
 import type { AgentRecord, CheckRun, Effort, Evidence, Limits, Plan, Quest, QuestState, Role, TaskProgress, Verdict } from '../types'
-import { hash } from './validation'
+import { hash, pathsOverlap } from './validation'
 
 export type LogEntry = { ev: string; data: Record<string, unknown> }
 export type Outcome = { ok: true; quest: Quest; log: LogEntry[]; note?: string } | { ok: false; error: string }
@@ -11,7 +11,7 @@ export const TRANSITIONS: Readonly<Record<QuestState, readonly QuestState[]>> = 
   INTAKE: ['PLANNING', 'PAUSED', 'HALTED', 'BLOCKED'],
   PLANNING: ['AWAITING_APPROVAL', 'PAUSED', 'HALTED', 'BLOCKED'],
   AWAITING_APPROVAL: ['DISPATCH', 'PLANNING', 'PAUSED', 'HALTED', 'BLOCKED'],
-  DISPATCH: ['IMPLEMENTING', 'PAUSED', 'HALTED', 'BLOCKED'],
+  DISPATCH: ['IMPLEMENTING', 'VERIFYING', 'PAUSED', 'HALTED', 'BLOCKED'],
   IMPLEMENTING: ['VERIFYING', 'DISPATCH', 'FIXING', 'PAUSED', 'HALTED', 'BLOCKED'],
   VERIFYING: ['REVIEWING', 'FIXING', 'PAUSED', 'HALTED', 'BLOCKED'],
   REVIEWING: ['DONE', 'DISPATCH', 'FIXING', 'PAUSED', 'HALTED', 'BLOCKED'],
@@ -149,6 +149,7 @@ export function submitPlan(q: Quest, plan: Plan, now: number): Outcome {
     c.progress = progress
     c.activeTask = null
     c.slot = null
+    c.benches = {}
     log.push({ ev: 'plan.submitted', data: { planHash: c.planHash, tasks: plan.tasks.map(t => t.id) } })
     if (c.state === 'BLOCKED') go(c, 'AWAITING_APPROVAL', now, log)
     else if (c.state === 'PLANNING') go(c, 'AWAITING_APPROVAL', now, log)
@@ -188,6 +189,7 @@ export function startTask(q: Quest, taskId: string, now: number): Outcome {
   return op(q, now, (c, log) => {
     if (!isApproved(c)) throw new Error('la misión no tiene un plan aprobado vigente')
     if (c.state !== 'DISPATCH' && c.state !== 'FIXING') throw new Error(`no se puede iniciar una subtarea en ${c.state}`)
+    if (c.slot) throw new Error(`hay una plaza abierta para ${c.slot.taskId}: lanza antes su agente`)
     const task = c.plan!.tasks.find(t => t.id === taskId)
     const p = c.progress[taskId]
     if (!task || !p) throw new Error(`subtarea desconocida: ${taskId}`)
@@ -228,6 +230,85 @@ export function startReview(q: Quest, now: number): Outcome {
   })
 }
 
+/** El agente trabaja en un taller (Artífice en paralelo), fuera del carril principal. */
+export const onBench = (q: Quest, agentId: string) => Object.values(q.benches ?? {}).some(b => b.agentId === agentId)
+
+const overlaps = (a: string[], b: string[]) => a.some(x => b.some(y => pathsOverlap(x, y)))
+
+/**
+ * Subtareas que pueden ir a un taller ahora: pendientes, con sus dependencias terminadas, sin trabajo visual (se
+ * mira en el árbol integrado) y con rutas disjuntas de la subtarea del carril principal y de los otros talleres.
+ */
+export function parallelCandidates(q: Quest): string[] {
+  const max = q.limits.maxParallelArtifices ?? 1
+  const benches = Object.keys(q.benches ?? {})
+  if (max <= 1 || !q.plan || !isApproved(q) || benches.length >= max - 1) return []
+  const busy = [q.activeTask, ...benches].filter((x): x is string => !!x).map(id => q.plan!.tasks.find(t => t.id === id)!.paths)
+  return q.plan.tasks
+    .filter(t => q.progress[t.id]?.status === 'pending' && !t.visual && t.dependsOn.every(d => q.progress[d]?.status === 'done'))
+    .filter(t => !busy.some(paths => overlaps(paths, t.paths)))
+    .map(t => t.id)
+}
+
+/** Abre el taller de una subtarea y la plaza de su Artífice en paralelo; el carril principal sigue a lo suyo. */
+export function startParallel(q: Quest, taskId: string, bench: { dir: string; seed: Record<string, string> }, now: number): Outcome {
+  return op(q, now, (c, log) => {
+    if (!isApproved(c)) throw new Error('la misión no tiene un plan aprobado vigente')
+    if (!isWorking(c) || c.state === 'PLANNING' || c.state === 'INTAKE') throw new Error(`no se puede abrir un taller en ${c.state}`)
+    if (c.slot) throw new Error(`hay una plaza abierta para ${c.slot.taskId}: lanza antes su agente`)
+    if (!parallelCandidates(c).includes(taskId))
+      throw new Error(`${taskId} no puede ir en paralelo ahora (pendiente, dependencias terminadas, sin trabajo visual, rutas disjuntas y como mucho ${(c.limits.maxParallelArtifices ?? 1) - 1} talleres)`)
+    const p = progressOf(c, taskId)
+    if (c.iterations >= c.limits.maxQuestIterations) throw new Error(`límite de iteraciones por misión (${c.limits.maxQuestIterations})`)
+    if (p.attempts >= maxAttempts(c, taskId)) throw new Error(`subtarea ${taskId}: sin intentos (${p.attempts}/${maxAttempts(c, taskId)}); en serie se bloqueará`)
+    p.attempts += 1
+    p.round += 1
+    p.status = 'parallel'
+    c.iterations += 1
+    c.benches = { ...(c.benches ?? {}), [taskId]: { dir: bench.dir, seed: bench.seed, agentId: null, ready: false } }
+    c.slot = { role: 'artifice', taskId, attempt: p.attempts, parallel: true }
+    c.progressMark += 1
+    log.push({ ev: 'task.started', data: { taskId, attempt: p.attempts, round: p.round, iteration: c.iterations, parallel: true, dir: bench.dir } })
+  })
+}
+
+/** Cierra un taller sin integrarlo: la subtarea vuelve a la cola (el intento queda gastado). */
+function dropBench(c: Quest, taskId: string, reason: string, log: LogEntry[]) {
+  const benches = { ...(c.benches ?? {}) }
+  delete benches[taskId]
+  c.benches = benches
+  if (c.slot?.parallel && c.slot.taskId === taskId) c.slot = null
+  const p = progressOf(c, taskId)
+  p.status = 'pending'
+  p.lastFailure = `taller: ${reason}`
+  log.push({ ev: 'bench.dropped', data: { taskId, reason } })
+}
+
+/** El mod copió el taller al árbol principal: la subtarea entra en el carril principal para verificarse. */
+export function integrate(q: Quest, taskId: string, now: number): Outcome {
+  return op(q, now, (c, log) => {
+    if (c.state !== 'DISPATCH') throw new Error(`solo se integra con el carril principal libre (estado ${c.state})`)
+    const b = c.benches?.[taskId]
+    if (!b?.ready || progressOf(c, taskId).status !== 'queued') throw new Error(`el taller de ${taskId} no está listo`)
+    const benches = { ...c.benches }
+    delete benches[taskId]
+    c.benches = benches
+    c.activeTask = taskId
+    progressOf(c, taskId).status = 'verifying'
+    log.push({ ev: 'bench.integrated', data: { taskId } })
+    go(c, 'VERIFYING', now, log)
+  })
+}
+
+/** El árbol principal cambió en las rutas del taller desde que se abrió: no se integra y la subtarea vuelve a la cola. */
+export function benchConflict(q: Quest, taskId: string, reason: string, now: number): Outcome {
+  return op(q, now, (c, log) => {
+    if (!c.benches?.[taskId]) throw new Error(`no hay taller para ${taskId}`)
+    dropBench(c, taskId, `conflicto al integrar: ${reason}`, log)
+    c.progressMark += 1
+  })
+}
+
 /** Por qué no puede lanzarse un agente de este rol ahora (null si puede). */
 /**
  * Agentes que la misión puede lanzar: los Archimagos ya lanzados + 2 por cada intento permitido de cada
@@ -250,10 +331,11 @@ export function spawnBlocker(q: Quest, role: Role): string | null {
   const running = q.agents.filter(a => a.status === 'running').length
   if (running >= q.limits.maxConcurrentAgents) return `límite de ${q.limits.maxConcurrentAgents} agentes concurrentes`
   if (role === 'archimago') return q.state === 'PLANNING' ? null : `el Archimago solo planifica (estado ${q.state})`
-  if (!q.slot || q.slot.role !== role) return `no hay una plaza autorizada para ${role}; usa la herramienta quest (start_task / start_review)`
+  if (!q.slot || q.slot.role !== role) return `no hay una plaza autorizada para ${role}; usa la herramienta quest (start_task / start_review / start_parallel)`
+  if (q.slot.parallel) return null // taller aparte: no depende del estado del carril principal
   if (role === 'artifice' && q.state !== 'IMPLEMENTING') return `el Artífice solo trabaja en IMPLEMENTING (estado ${q.state})`
   if (role === 'paladin' && q.state !== 'REVIEWING') return `el Paladín solo revisa en REVIEWING (estado ${q.state})`
-  if (q.agents.some(a => a.status === 'running' && a.role !== 'archimago')) return 'ya hay un agente de ejecución en curso (ejecución secuencial)'
+  if (q.agents.some(a => a.status === 'running' && a.role !== 'archimago' && !onBench(q, a.id))) return 'ya hay un agente de ejecución en curso en el carril principal'
   return null
 }
 
@@ -263,6 +345,8 @@ export function agentSpawned(q: Quest, rec: AgentRecord, now: number): Outcome {
     if (blocker) throw new Error(blocker)
     c.agents.push(rec)
     c.agentsSpawned += 1
+    const bench = c.slot?.parallel && rec.taskId ? c.benches?.[rec.taskId] : undefined
+    if (bench) bench.agentId = rec.id
     if (rec.role !== 'archimago') c.slot = null
     c.progressMark += 1
     log.push({ ev: 'agent.spawned', data: { agentId: rec.id, role: rec.role, taskId: rec.taskId, model: rec.model } })
@@ -355,6 +439,17 @@ export function agentFinished(q: Quest, agentId: string, a: { reason: string; pa
     rec.endedAt = now
     rec.partial = a.partial
     log.push({ ev: 'agent.finished', data: { agentId, role: rec.role, reason: a.reason, partial: a.partial } })
+    const bench = rec.taskId ? c.benches?.[rec.taskId] : undefined
+    if (bench && bench.agentId === rec.id) {
+      const p = progressOf(c, rec.taskId!)
+      if (a.reason === 'answer') {
+        bench.ready = true
+        p.status = 'queued'
+        log.push({ ev: 'bench.ready', data: { taskId: rec.taskId } })
+      } else dropBench(c, rec.taskId!, `el Artífice en paralelo terminó con ${a.reason}`, log)
+      c.progressMark += 1
+      return
+    }
     if (rec.role === 'archimago' || rec.taskId !== c.activeTask || STOPPED.includes(c.state)) return
     if (a.reason === 'aborted') return void stop(c, 'PAUSED', `${rec.role} interrumpido por la persona`, now, log)
     if (a.reason !== 'answer') return void stop(c, 'BLOCKED', `${rec.role} terminó con ${a.reason}`, now, log)
@@ -375,6 +470,14 @@ export function recover(q: Quest, now: number): Outcome {
       a.status = 'lost'
       a.endedAt = now
       log.push({ ev: 'agent.lost', data: { agentId: a.id, role: a.role, taskId: a.taskId } })
+    }
+    for (const [id, b] of Object.entries(c.benches ?? {})) {
+      if (!b.agentId || !lost.some(a => a.id === b.agentId)) continue
+      const p = progressOf(c, id)
+      p.attempts = Math.max(0, p.attempts - 1)
+      p.round = Math.max(0, p.round - 1)
+      c.iterations = Math.max(0, c.iterations - 1)
+      dropBench(c, id, 'agente perdido al reiniciar', log)
     }
     if (TERMINAL.includes(c.state)) return
     const lostText = lost.length ? `; agentes perdidos: ${lost.map(a => `${a.role} ${a.id}`).join(', ')}` : ''
@@ -651,8 +754,13 @@ export function nextStep(q: Quest): string {
     case 'AWAITING_APPROVAL':
       return 'Persona: aprobar o rechazar el plan en el diálogo (o /quest-resume para volver a preguntar)'
     case 'DISPATCH': {
+      const queued = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'queued')
+      if (queued) return `Mod: integrar el taller de ${queued.id}`
       const ready = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'pending' && t.dependsOn.every(d => q.progress[d]?.status === 'done'))
-      return ready ? `Maestro: quest start_task ${ready.id} y lanzar guildflow:artifice` : 'Maestro: no hay subtareas listas'
+      const busy = Object.keys(q.benches ?? {})
+      if (!ready) return busy.length ? `Esperando a los Artífices en paralelo (${busy.join(', ')})` : 'Maestro: no hay subtareas listas'
+      const also = parallelCandidates(q).filter(id => id !== ready.id)
+      return `Maestro: quest start_task ${ready.id} y lanzar guildflow:artifice${also.length ? `; en paralelo antes: quest start_parallel ${also[0]} (Agent en segundo plano)` : ''}`
     }
     case 'IMPLEMENTING':
       return q.slot ? `Maestro: lanzar guildflow:artifice para ${q.slot.taskId}` : `Artífice trabajando en ${q.activeTask}`

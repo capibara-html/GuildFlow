@@ -234,6 +234,8 @@ const VERDICT: Record<string, string> = { PASS: '✔', FAIL: '✘', INCONCLUSIVE
 const TASK: Record<TaskStatus, { glyph: string; color?: string }> = {
   pending: { glyph: '○' },
   active: { glyph: '⚒', color: STATIONS.artifice.color },
+  parallel: { glyph: '⚒', color: STATIONS.artifice.color },
+  queued: { glyph: '⧗', color: STATIONS.maestro.color },
   fixing: { glyph: '⚒', color: STATIONS.artifice.color },
   verifying: { glyph: '⚖', color: STATIONS.maestro.color },
   reviewing: { glyph: '⛨', color: STATIONS.paladin.color },

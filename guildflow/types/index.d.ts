@@ -90,7 +90,8 @@ export type Evidence = {
   at: number
 }
 
-export type TaskStatus = 'pending' | 'active' | 'verifying' | 'reviewing' | 'fixing' | 'done' | 'blocked'
+/** parallel: un Artífice la implementa en su taller; queued: terminó y espera a integrarse en el árbol principal. */
+export type TaskStatus = 'pending' | 'active' | 'parallel' | 'queued' | 'verifying' | 'reviewing' | 'fixing' | 'done' | 'blocked'
 
 export type TaskProgress = {
   status: TaskStatus
@@ -144,6 +145,8 @@ export type Limits = {
   maxNoProgressRounds: number
   maxAgentsPerQuest: number
   maxConcurrentAgents: number
+  /** Artífices a la vez contando el del carril principal (1 = en serie). Ausente en misiones antiguas. */
+  maxParallelArtifices?: number
   tokenBudgetPerQuest: number
   costBudgetUsd: number
   rateLimitPercent: number
@@ -165,7 +168,14 @@ export type Limits = {
   maestroEffort?: TaskEffort | null
 }
 
-export type Slot = { role: Role; taskId: string | null; attempt: number }
+/** parallel: plaza de un Artífice en paralelo (trabaja en su taller, fuera del carril principal). */
+export type Slot = { role: Role; taskId: string | null; attempt: number; parallel?: true }
+
+/**
+ * Taller de una subtarea en paralelo: copia de sus rutas en `dir` (relativo a la raíz, dentro de .guildflow/wt/).
+ * `seed` es la huella de esas rutas en el árbol principal al abrirlo: si cambia antes de integrar, hay conflicto.
+ */
+export type Bench = { dir: string; seed: Record<string, string>; agentId: string | null; ready: boolean }
 
 export type CheckRun = {
   runId: string
@@ -206,6 +216,8 @@ export type Quest = {
   progress: Record<string, TaskProgress>
   activeTask: string | null
   slot: Slot | null
+  /** Talleres de las subtareas en paralelo, por id. Ausente en misiones antiguas. */
+  benches?: Record<string, Bench>
   iterations: number
   agentsSpawned: number
   agents: AgentRecord[]
