@@ -148,8 +148,10 @@ Estructura y diseño: `docs/08-guildflow-implementation.md`. Resultados: `docs/1
 
 ## Limitaciones conocidas
 
-- Ejecución secuencial: no hay worktrees ni Artífices en paralelo.
-- Sin sandbox del sistema operativo (ver el aviso).
+- Guía completa, con las limitaciones por tipo de proyecto (JVM en Windows, servicios externos, binarios, apps nativas…): `docs/guia-guildflow.html`.
+- En paralelo solo va la implementación (`maxParallelArtifices`); la integración, la verificación y la revisión siguen en serie, y las subtareas visuales no entran.
+- Sin sandbox por defecto: `sandbox: docker` aísla las comprobaciones, pero no el servidor de vista previa (ver el aviso).
+- El repositorio es privado: la instalación desde GitHub requiere acceso.
 - El esfuerzo aplicado no se puede confirmar desde la API: se impone en cada petición, pero la respuesta no lo devuelve.
 - El reinicio completo de Desktop con una misión a medias no se ha probado en vivo en esta fase (sí en la PoC).
 

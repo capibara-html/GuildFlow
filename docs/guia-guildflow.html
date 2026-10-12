@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de GuildFlow</title>
+<style>
+  :root {
+    --bg: #faf7f2; --panel: #ffffff; --ink: #24211d; --muted: #6b645a; --line: #e4ddd1;
+    --accent: #9a6b1f; --accent-soft: #f3e7cf; --code-bg: #f1ece3; --ok: #2e7d4f; --warn: #a15c07; --bad: #b3261e;
+    --role-maestro: #b8860b; --role-archimago: #6c5ce7; --role-artifice: #c0602f; --role-paladin: #3f74c4; --role-escriba: #6f7a80;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17150f; --panel: #201d16; --ink: #ece6da; --muted: #a59d8f; --line: #3a352a;
+      --accent: #e0b25a; --accent-soft: #3a2f19; --code-bg: #2a261d; --ok: #6cc28f; --warn: #e9a649; --bad: #f08a80;
+      --role-maestro: #e0b25a; --role-archimago: #a99cf5; --role-artifice: #ec9a6b; --role-paladin: #85aef0; --role-escriba: #a9b3b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; display: grid; grid-template-columns: 1fr; gap: 32px; }
+  @media (min-width: 980px) { .wrap { grid-template-columns: 240px 1fr; } }
+  header.hero { border-bottom: 1px solid var(--line); background: linear-gradient(180deg, var(--accent-soft), transparent); }
+  header.hero .inner { max-width: 1180px; margin: 0 auto; padding: 48px 16px 32px; }
+  .kicker { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.15; margin: 8px 0 12px; }
+  .lede { font-size: 18px; color: var(--muted); max-width: 760px; margin: 0; }
+  .meta { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--muted); }
+  nav.toc { position: sticky; top: 16px; align-self: start; padding-top: 32px; display: none; }
+  @media (min-width: 980px) { nav.toc { display: block; } }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 4px 0 4px 10px; border-left: 2px solid var(--line); font-size: 14px; }
+  nav.toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+  main { padding: 16px 0 64px; min-width: 0; }
+  section { padding-top: 24px; }
+  h2 { font-size: 26px; margin: 24px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 19px; margin: 24px 0 6px; }
+  p, li { max-width: 78ch; }
+  a { color: var(--accent); }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .92em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 15px; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  td code { overflow-wrap: anywhere; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 12px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 4px; font-size: 16px; }
+  .card p { margin: 0; font-size: 15px; color: var(--muted); }
+  .role { border-top: 4px solid var(--c); }
+  .role .tag { font-size: 12px; color: var(--c); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0; }
+  .flow span { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; font-size: 14px; font-family: ui-monospace, Consolas, monospace; }
+  .flow b { color: var(--muted); font-weight: 400; }
+  .note { border-left: 4px solid var(--accent); background: var(--panel); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .note.warn { border-left-color: var(--warn); }
+  .note.bad { border-left-color: var(--bad); }
+  .note strong:first-child { display: block; margin-bottom: 2px; }
+  .lvl { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; }
+  .lvl.ok { color: var(--ok); } .lvl.warn { color: var(--warn); } .lvl.bad { color: var(--bad); }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding: 24px 0 48px; }
+  @media print {
+    nav.toc { display: none; } .wrap { display: block; } header.hero { background: none; }
+    pre, .card, .note, tr { break-inside: avoid; } a { color: inherit; } h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="inner">
+    <div class="kicker">GuildFlow 0.3.0 · plugin de Claude Code</div>
+    <h1>Guía de GuildFlow</h1>
+    <p class="lede">Un gremio de agentes que lleva un encargo de programación de principio a fin: plan con criterios verificables, tu aprobación, implementación limitada a rutas concretas, verificación ejecutada por el propio mod, revisión independiente y límites duros de coste, tiempo e intentos.</p>
+    <div class="meta">
+      <span class="pill">Probado con Claude Code 2.1.295</span>
+      <span class="pill">Windows, Desktop y CLI</span>
+      <span class="pill">Interfaz en español</span>
+      <span class="pill">Licencia MIT</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="toc" aria-label="Índice">
+  <a href="#intro">1. Introducción</a>
+  <a href="#como">2. Cómo funciona</a>
+  <a href="#instalar">3. Instalación</a>
+  <a href="#primeros">4. Primera misión</a>
+  <a href="#comandos">5. Comandos</a>
+  <a href="#config">6. Configuración</a>
+  <a href="#seguridad">7. Seguridad</a>
+  <a href="#limites-proyecto">8. Limitaciones por tipo de proyecto</a>
+  <a href="#limites">9. Limitaciones generales</a>
+  <a href="#problemas">10. Solución de problemas</a>
+  <a href="#glosario">11. Glosario</a>
+</nav>
+
+<main>
+<section id="intro">
+  <h2>1. Introducción</h2>
+  <p>GuildFlow convierte una petición como «añade una función con sus tests» en una <strong>misión</strong> con reglas que no dependen de la buena voluntad del modelo. Las impone en código un mod de Claude Code:</p>
+  <ul>
+    <li><strong>Nadie se aprueba a sí mismo.</strong> El plan se aprueba solo en un diálogo tuyo o, si lo activas, automáticamente cuando no toca nada sensible.</li>
+    <li><strong>Cada subtarea escribe solo en sus rutas.</strong> El Artífice no puede tocar sus tests, el estado del gremio ni nada fuera de lo aprobado.</li>
+    <li><strong>La evidencia la produce el mod.</strong> Las comprobaciones se ejecutan sin shell, con el argv exacto aprobado, y «terminado» exige evidencia positiva en cada criterio.</li>
+    <li><strong>Revisión independiente.</strong> Un Paladín, en solo lectura y con su propio contexto, juzga cada criterio con referencias a archivo y línea.</li>
+    <li><strong>Límites que no se pueden desactivar:</strong> intentos, iteraciones, tokens, coste equivalente, uso de la suscripción, tiempo, archivos y líneas de diff.</li>
+  </ul>
+  <p><strong>Para quién es:</strong> para tareas de programación con un resultado comprobable (tests, scripts de verificación o una interfaz que se pueda mirar en local) en repositorios git de confianza.</p>
+</section>
+
+<section id="como">
+  <h2>2. Cómo funciona</h2>
+  <h3>Los roles</h3>
+  <div class="grid">
+    <div class="card role" style="--c: var(--role-maestro)"><div class="tag">Sesión principal</div><h4>⚖ Maestro</h4><p>Tu sesión. Interpreta la petición, planifica lo pequeño y coordina. Mientras la misión trabaja usa Sonnet con esfuerzo medium y no escribe archivos ni usa la shell.</p></div>
+    <div class="card role" style="--c: var(--role-archimago)"><div class="tag">Opus · solo lectura</div><h4>✶ Archimago</h4><p>Traza todo plan de más de una subtarea: subtareas, rutas, comprobaciones, criterios, recursos y esfuerzo de cada subtarea.</p></div>
+    <div class="card role" style="--c: var(--role-artifice)"><div class="tag">Sonnet u Opus</div><h4>⚒ Artífice</h4><p>Implementa una subtarea, solo en sus rutas. Su esfuerzo lo fija el plan (low…xhigh) o la complejidad.</p></div>
+    <div class="card role" style="--c: var(--role-paladin)"><div class="tag">Sonnet · high · solo lectura</div><h4>⛨ Paladín</h4><p>Revisa cada criterio con evidencia. En las subtareas visuales tiene que mirar el resultado en el navegador local.</p></div>
+    <div class="card role" style="--c: var(--role-escriba)"><div class="tag">El mod · Haiku opcional</div><h4>✎ Escriba</h4><p>Lleva la bitácora y escribe la crónica final. Con <code>escriba: haiku</code> añade un resumen en lenguaje llano.</p></div>
+  </div>
+
+  <h3>El ciclo de una misión</h3>
+  <div class="flow" aria-label="Estados de la misión">
+    <span>PLANNING</span><b>→</b><span>AWAITING_APPROVAL</span><b>→</b><span>DISPATCH</span><b>→</b><span>IMPLEMENTING</span><b>→</b><span>VERIFYING</span><b>→</b><span>REVIEWING</span><b>→</b><span>DONE</span><b>→</b><span>LOGGED</span>
+  </div>
+  <ol>
+    <li><strong>Plan.</strong> El Maestro planifica si cabe en una subtarea; si no, lanza al Archimago. Si la petición no trae tests, la primera subtarea los escribe, el Paladín los revisa y quedan congelados.</li>
+    <li><strong>Aprobación.</strong> Un diálogo te muestra el plan completo: rutas, argv de cada comprobación, recursos y límites. Si no cabe entero (3000 caracteres), se rechaza para que se divida: nunca apruebas algo que no pudiste leer.</li>
+    <li><strong>Implementación.</strong> Un Artífice por subtarea, en serie. Con <code>maxParallelArtifices</code> &gt; 1, las subtareas independientes pueden avanzar a la vez en talleres aparte.</li>
+    <li><strong>Verificación.</strong> El mod ejecuta las comprobaciones del plan y <code>diff-scope</code>: solo se tocaron rutas autorizadas, el diff no está vacío y respeta los límites.</li>
+    <li><strong>Revisión.</strong> El Paladín juzga los criterios de revisión. Si algo falla, la subtarea vuelve a corregirse con la evidencia (<code>FIXING</code>).</li>
+    <li><strong>Cierre.</strong> Con todo en PASS, el mod escribe la crónica en <code>.guildflow/summary-&lt;id&gt;.md</code>.</li>
+  </ol>
+  <p>Si el mismo fallo se repite, la misión queda <strong>BLOCKED</strong> y te pide decisión. Si se supera un límite, queda <strong>HALTED</strong>. Una parada por seguridad (por ejemplo, alguien modificó el estado del gremio) no se reanuda.</p>
+
+  <h3>Dónde ver el estado</h3>
+  <ul>
+    <li><strong>Línea de estado</strong> bajo el cuadro de texto: trabajando, completada, bloqueada o esperando tu aprobación.</li>
+    <li><strong>Franja</strong> encima del cuadro de texto: agentes en curso y siguiente paso.</li>
+    <li><strong>Panel «Gremio · GuildFlow»</strong>: la sala del gremio en pixel art, botones de acción, progreso, encargos con el veredicto de cada criterio, tesoro (consumo frente a límites) y bitácora reciente.</li>
+  </ul>
+</section>
+
+<section id="instalar">
+  <h2>3. Instalación</h2>
+  <h3>Requisitos</h3>
+  <ul>
+    <li><strong>Claude Code 2.1.295 o posterior</strong> (Desktop o CLI). La API de mods está en acceso anticipado y puede cambiar entre versiones.</li>
+    <li>El proyecto tiene que ser un <strong>repositorio git</strong>: <code>diff-scope</code> compara con el <code>HEAD</code> aprobado.</li>
+    <li>Los ejecutables que usen tus comprobaciones (por defecto: node, git, tsc, python, py, pytest, cargo, go, dotnet, deno, bun).</li>
+    <li>Añade <code>.guildflow/</code> al <code>.gitignore</code> del proyecto: ahí van el estado, la bitácora, la evidencia y los talleres.</li>
+    <li>Opcional: <strong>Docker</strong>, para aislar las comprobaciones (<code>sandbox: docker</code>).</li>
+  </ul>
+
+  <h3>Desde el marketplace</h3>
+  <p>En una sesión de Claude Code en terminal:</p>
+  <pre><code>/plugin install guildflow --marketplace capibara-html/GuildFlow</code></pre>
+  <p>Responde <code>y</code> para añadir el marketplace, elige el ámbito (el de usuario es el primero) y ajusta las opciones en la pantalla que aparece. Después puedes cambiarlas con <code>/plugin configure guildflow@guildflow</code>.</p>
+  <div class="note warn"><strong>El repositorio es privado.</strong> Esa orden solo funciona con una cuenta de GitHub que tenga acceso. Para instalarlo en otra máquina sin acceso, usa una copia local del repositorio (abajo) o haz público el repositorio.</div>
+
+  <h3>Desde una carpeta local</h3>
+  <pre><code>claude plugin marketplace add C:\ruta\a\GuildFlow
+claude plugin install guildflow@guildflow</code></pre>
+
+  <h3>Para desarrollarlo</h3>
+  <p>Carga la carpeta del plugin directamente, sin instalarlo, añadiéndola a <code>CLAUDE_CODE_PLUGIN_DIRS</code> en <code>~/.claude/settings.json</code>:</p>
+  <pre><code>{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\&lt;tú&gt;\\Desktop\\GuildFlow\\guildflow" } }</code></pre>
+  <p>O, para una sola sesión de CLI: <code>claude --plugin-dir /ruta/a/GuildFlow/guildflow</code>. Usa solo una vía: si lo instalas desde el marketplace, quítalo de <code>CLAUDE_CODE_PLUGIN_DIRS</code>, o tendrás dos copias.</p>
+  <p><strong>Comprobación:</strong> escribe <code>/quest-status</code>. Debe responder «Sin misión…».</p>
+</section>
+
+<section id="primeros">
+  <h2>4. Primera misión</h2>
+  <p>Pide algo con un resultado comprobable. Si ya sabes cómo verificarlo, dilo:</p>
+  <pre><code>/quest Añade capitalize en src/text/cap.js (primera letra en mayúscula, resto igual, respetando tildes y la cadena vacía) con su test en test-multi/cap.test.js. Comprobación: node --test test-multi/cap.test.js con al menos 2 tests.</code></pre>
+  <p>Qué pasará:</p>
+  <ol>
+    <li>El Maestro arranca solo, analiza el repositorio y envía el plan.</li>
+    <li>Aparece el diálogo del plan («Sellar el pergamino» = aprobar). Con <code>autoApprovePlan</code> y un plan no sensible, se aprueba solo.</li>
+    <li>El Artífice implementa, el mod verifica y el Paladín revisa; lo verás en el panel.</li>
+    <li>Al terminar tienes la crónica en <code>.guildflow/summary-&lt;id&gt;.md</code>, con cada criterio, su evidencia y el <code>runId</code> de cada ejecución.</li>
+  </ol>
+  <div class="note"><strong>Consejo de coste.</strong> Lanza las misiones desde una sesión nueva. Cada petición del Maestro arrastra la conversación entera: en una sesión muy larga, la misma misión cuesta varias veces más.</div>
+</section>
+
+<section id="comandos">
+  <h2>5. Comandos</h2>
+  <h3>Para ti</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Comando</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><code>/quest &lt;petición&gt;</code></td><td>Abre una misión y arranca al Maestro. Si había una detenida, bloqueada o en pausa, la archiva.</td></tr>
+      <tr><td><code>/quest-status</code></td><td>Estado completo (criterios, agentes, consumo, siguiente paso) y abre el panel.</td></tr>
+      <tr><td><code>/quest-halt</code></td><td>Detiene la misión ya. Conserva el trabajo y el estado; los agentes en curso ven rechazadas sus herramientas.</td></tr>
+      <tr><td><code>/quest-resume</code></td><td>Reanuda tras confirmarlo en un diálogo. Si estaba bloqueada, concede un intento más. Con un plan pendiente, vuelve a preguntar la aprobación.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Botones del panel</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Botón</th><th>Equivale a</th></tr></thead>
+    <tbody>
+      <tr><td>⛔ Detener misión</td><td><code>/quest-halt</code>, con confirmación previa.</td></tr>
+      <tr><td>🏕️ Reanudar · 📜 Revisar el plan</td><td><code>/quest-resume</code>, con su diálogo; después arranca el turno del Maestro.</td></tr>
+      <tr><td>Animación: activar / desactivar</td><td>Anima o congela los sprites. La preferencia se guarda.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Herramienta <code>quest</code> (la usa el Maestro)</h3>
+  <p>No la necesitas para trabajar, pero te ayuda a entender lo que ves en el registro:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Acción</th><th>Cuándo</th></tr></thead>
+    <tbody>
+      <tr><td><code>status</code></td><td>En cualquier momento: estado real y siguiente paso.</td></tr>
+      <tr><td><code>submit_plan</code></td><td>En PLANNING (o BLOCKED, para replanificar): el mod valida y gestiona la aprobación.</td></tr>
+      <tr><td><code>start_task</code></td><td>En DISPATCH o FIXING: abre la plaza del Artífice de una subtarea.</td></tr>
+      <tr><td><code>start_parallel</code></td><td>Con <code>maxParallelArtifices</code> &gt; 1: abre un taller para otra subtarea independiente.</td></tr>
+      <tr><td><code>start_review</code></td><td>En REVIEWING: abre la plaza del Paladín.</td></tr>
+      <tr><td><code>verify</code></td><td>En VERIFYING, si las comprobaciones automáticas no llegaron a ejecutarse.</td></tr>
+      <tr><td><code>block</code></td><td>Cuando hace falta una decisión tuya.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Para desarrollar el plugin</h3>
+  <pre><code>claude plugin validate guildflow
+claude plugin test guildflow
+npx -y -p typescript@5.9.3 tsc -p guildflow --noEmit</code></pre>
+  <p>En Windows, si el <code>claude</code> de la terminal es anterior a 2.1.295, da fallos falsos. Usa el binario de Desktop: <code>%APPDATA%\Claude\claude-code\&lt;versión&gt;\&lt;hash&gt;\claude.exe</code>.</p>
+  <h3>Sandbox Docker</h3>
+  <pre><code>docker pull node:22-alpine
+docker pull python:3.12-alpine</code></pre>
+  <p>Descargar antes las imágenes evita que la primera comprobación gaste su tiempo en bajarlas.</p>
+</section>
+
+<section id="config">
+  <h2>6. Configuración</h2>
+  <p>Instalado desde el marketplace: <code>/plugin configure guildflow@guildflow</code>. Cargado por carpeta: en <code>~/.claude/settings.json</code>, dentro de <code>pluginConfigs.guildflow.options</code>. El <code>settings.local.json</code> del proyecto <strong>no</strong> las aplica.</p>
+  <pre><code>{ "pluginConfigs": { "guildflow": { "options": { "autoApprovePlan": true, "sandbox": "docker", "maxParallelArtifices": 2 } } } }</code></pre>
+  <p>Un valor fuera de rango se acota a su tope: ningún límite se puede desactivar.</p>
+  <h3>Límites</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Opción</th><th>Por defecto</th><th>Tope</th><th>Qué limita</th></tr></thead>
+    <tbody>
+      <tr><td><code>maxAttemptsPerTask</code></td><td>3</td><td>10</td><td>Ejecuciones del Artífice por subtarea.</td></tr>
+      <tr><td><code>maxQuestIterations</code></td><td>8</td><td>30</td><td>Rondas de implementación en toda la misión.</td></tr>
+      <tr><td><code>maxSameFailure</code></td><td>2</td><td>5</td><td>Repeticiones del mismo fallo antes de bloquear.</td></tr>
+      <tr><td><code>maxNoProgressRounds</code></td><td>2</td><td>5</td><td>Rondas sin más criterios aprobados antes de detener.</td></tr>
+      <tr><td><code>maxAgentsPerQuest</code></td><td>40</td><td>60</td><td>Techo de subagentes; el presupuesto real sale del plan.</td></tr>
+      <tr><td><code>maxConcurrentAgents</code></td><td>3</td><td>3</td><td>Subagentes a la vez.</td></tr>
+      <tr><td><code>maxParallelArtifices</code></td><td>1</td><td>3</td><td>Artífices a la vez contando el del carril principal (1 = en serie).</td></tr>
+      <tr><td><code>tokenBudgetPerQuest</code></td><td>2 000 000</td><td>20 000 000</td><td>Entrada + salida + escritura de caché (las lecturas de caché aparte).</td></tr>
+      <tr><td><code>costBudgetUsd</code></td><td>25</td><td>500</td><td>Coste equivalente a precio de API (no lo facturado en una suscripción).</td></tr>
+      <tr><td><code>rateLimitPercent</code></td><td>90</td><td>100</td><td>Se detiene si una ventana de uso de la suscripción lo supera.</td></tr>
+      <tr><td><code>wallClockMinutes</code></td><td>60</td><td>480</td><td>Minutos activos, sin contar pausas.</td></tr>
+      <tr><td><code>maxFilesChanged</code></td><td>25</td><td>200</td><td>Archivos distintos que puede escribir la misión.</td></tr>
+      <tr><td><code>maxDiffLines</code></td><td>1500</td><td>20 000</td><td>Líneas añadidas + eliminadas.</td></tr>
+      <tr><td><code>maxTurnsArchimago</code> · <code>Artifice</code> · <code>Paladin</code></td><td>25 · 40 · 25</td><td>60 · 80 · 60</td><td>Peticiones al modelo por ejecución de cada rol.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Comportamiento</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Opción</th><th>Por defecto</th><th>Qué hace</th></tr></thead>
+    <tbody>
+      <tr><td><code>autoApprovePlan</code></td><td>false</td><td>Aprueba sin diálogo solo los planes que no son <code>large</code> y cuyos archivos tienen una extensión permitida y un nombre no sensible.</td></tr>
+      <tr><td><code>autoApproveExtensions</code></td><td>código, tests, estilos, HTML, Markdown, SVG, texto</td><td>Lista blanca de la aprobación automática. Sin json, yaml ni toml, ni archivos sin extensión.</td></tr>
+      <tr><td><code>trustedTools</code></td><td>Context7 + WebSearch</td><td>Herramientas MCP o web que un plan puede usar sin perder la aprobación automática.</td></tr>
+      <tr><td><code>sandbox</code></td><td>none</td><td><code>docker</code>: cada comprobación corre en un contenedor sin red, con el proyecto de solo lectura.</td></tr>
+      <tr><td><code>sandboxImages</code></td><td>node, python, go, cargo, deno, bun (Alpine)</td><td><code>ejecutable=imagen</code>. Un ejecutable sin imagen no se acepta con el sandbox activo.</td></tr>
+      <tr><td><code>allowedExecutables</code></td><td>node, git, tsc, python, py, pytest, cargo, go, dotnet, deno, bun</td><td>Ejecutables que pueden declarar las comprobaciones. Nunca .cmd, .bat, .ps1 ni .sh.</td></tr>
+      <tr><td><code>maestroModel</code></td><td>claude-sonnet-5-5</td><td>Modelo del Maestro mientras la misión trabaja; <code>inherit</code> = el de tu sesión.</td></tr>
+      <tr><td><code>maestroEffort</code></td><td>medium</td><td>Esfuerzo del Maestro mientras la misión trabaja; <code>inherit</code> = el de tu sesión.</td></tr>
+      <tr><td><code>archimagoEffort</code></td><td>high</td><td><code>xhigh</code> para misiones de arquitectura.</td></tr>
+      <tr><td><code>escriba</code></td><td>none</td><td><code>haiku</code>: resumen en lenguaje llano al principio de la crónica (una llamada pequeña, sin herramientas).</td></tr>
+      <tr><td><code>theme</code></td><td>gremio</td><td><code>sobrio</code>: sin temática de rol, solo el dato.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="seguridad">
+  <h2>7. Seguridad</h2>
+  <div class="note bad"><strong>Lo primero.</strong> Un plugin de Claude Code se ejecuta con tus permisos. Sin sandbox, las comprobaciones ejecutan en tu máquina el código que escribe el Artífice. Úsalo en repositorios de confianza, o activa <code>sandbox: docker</code>.</div>
+  <h3>Lo que el mod impone en código</h3>
+  <ul>
+    <li><strong>Guarda central de herramientas</strong> que falla en cerrado: ante un error, rechaza.</li>
+    <li><strong>Lista blanca por rol</strong>, más los recursos aprobados de cada subtarea. Ningún agente puede delegar.</li>
+    <li><strong>Rutas normalizadas</strong> (Windows/POSIX, traversal, UNC, ADS, enlaces). Rutas reservadas: <code>.guildflow</code>, <code>.git</code> y <code>.claude</code>.</li>
+    <li><strong>Comprobaciones sin shell</strong>, con argv congelado, ejecutables en lista blanca y sin código en línea (<code>-e</code>, <code>--eval</code>…). Se verifica la integridad de los tests antes y después de ejecutarlos.</li>
+    <li><strong>Plan congelado por hash.</strong> Si se modifica el estado del gremio fuera del mod, la misión se detiene por seguridad.</li>
+    <li><strong>Acciones sensibles del Maestro</strong> (push, despliegue, instalar dependencias, borrados, escribir fuera del repositorio, MCP de sistemas externos): siempre te pregunta.</li>
+  </ul>
+  <h3>Sandbox Docker (<code>sandbox: docker</code>)</h3>
+  <ul>
+    <li>Contenedor sin red, sin capacidades y como el usuario <code>nobody</code>, con límites de CPU, memoria y procesos.</li>
+    <li>El proyecto y la raíz del contenedor van montados en solo lectura; solo <code>/tmp</code> es escribible. Así el código bajo prueba no puede dejar hooks de git ni ajustes de <code>.claude/</code> que luego corran en tu máquina.</li>
+    <li>Si Docker no responde, la comprobación falla con ese motivo y nunca se repite fuera del contenedor.</li>
+  </ul>
+  <h3>Aprobación automática</h3>
+  <p>Dos capas. Primero, la extensión del archivo tiene que estar en <code>autoApproveExtensions</code>. Después, el nombre no puede ser sensible: dependencias, CI o despliegue, migraciones, secretos, configuración del repositorio o del editor, configuraciones de herramientas que ejecutan código (<code>*.config.js</code>, <code>.algorc</code>, <code>conftest.py</code>, <code>setup.py</code>…) o instrucciones de agentes (<code>CLAUDE.md</code>, <code>.claude/</code>, <code>.mcp.json</code>). Se comprueba al aprobar y en cada escritura.</p>
+</section>
+
+<section id="limites-proyecto">
+  <h2>8. Limitaciones por tipo de proyecto</h2>
+  <p>GuildFlow rinde mejor con proyectos que se verifican con un comando que termina solo. Esta tabla resume dónde encaja peor y cómo sortearlo.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Tipo de proyecto</th><th>Encaje</th><th>Limitación</th><th>Qué hacer</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Node / TypeScript</strong></td><td><span class="lvl ok">Bueno</span></td>
+        <td>En Windows, <code>npm</code>, <code>npx</code> y <code>node_modules/.bin/*</code> son <code>.cmd</code> y no se admiten. <code>node --test test/</code> con un directorio no funciona en Windows. Con sandbox, los módulos nativos compilados para Windows no cargan en el contenedor Linux.</td>
+        <td>Declara <code>node</code> con el script real (<code>node node_modules/jest/bin/jest.js</code>) y nombra los archivos de test concretos.</td></tr>
+      <tr><td><strong>Python</strong></td><td><span class="lvl ok">Bueno</span></td>
+        <td>Con sandbox, la imagen por defecto no trae tus dependencias y no hay red para instalarlas. Un <code>venv</code> de Windows no sirve dentro del contenedor.</td>
+        <td>Sin sandbox, usa <code>python</code> o <code>pytest</code> del entorno. Con sandbox, asigna en <code>sandboxImages</code> una imagen propia con las dependencias.</td></tr>
+      <tr><td><strong>Rust (cargo)</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>La compilación puede superar el tiempo de una comprobación (máximo 10 min). Con sandbox, sin red no se descargan crates.</td>
+        <td>Sube <code>timeoutMs</code> en el plan, compila antes fuera de la misión o usa crates vendorizados.</td></tr>
+      <tr><td><strong>Go</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>El mod no sabe contar los tests en la salida de <code>go test</code>, así que <code>minTests</code> mayor que 0 falla. Con sandbox, sin red no se descargan módulos.</td>
+        <td>Usa <code>minTests: 0</code> con <code>stdoutIncludes: ["ok"]</code>, o tests con salida TAP. Vendoriza los módulos.</td></tr>
+      <tr><td><strong>.NET</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>No hay imagen de serie para el sandbox, y <code>dotnet restore</code> necesita red.</td>
+        <td>Sin sandbox funciona con <code>dotnet test</code>. Con sandbox, añade una imagen del SDK y restaura antes.</td></tr>
+      <tr><td><strong>Java / Kotlin (Maven, Gradle)</strong></td><td><span class="lvl bad">Limitado</span></td>
+        <td><code>mvn</code> y <code>gradle</code> no están en la lista de ejecutables. En Windows son <code>.cmd</code> o <code>.bat</code> y no se pueden declarar. Su salida («Tests run: N») no se cuenta. Sin red no descargan dependencias.</td>
+        <td>En macOS o Linux, añade el ejecutable a <code>allowedExecutables</code> y usa <code>minTests: 0</code> con <code>stdoutIncludes: ["BUILD SUCCESS"]</code>. En Windows, de momento, solo revisión del Paladín o un script <code>node</code>/<code>python</code> que lance la herramienta.</td></tr>
+      <tr><td><strong>Web con interfaz</strong></td><td><span class="lvl ok">Bueno</span></td>
+        <td>Lo visual necesita un servidor de vista previa y solo se mira en <code>localhost</code>. Ese servidor corre en tu máquina, fuera del sandbox. Las subtareas visuales no van en paralelo.</td>
+        <td>Declara <code>preview</code> en el plan (por ejemplo, <code>python -m http.server</code>) y criterios <code>visual</code>. El Archimago lo hace solo.</td></tr>
+      <tr><td><strong>Juegos y arte</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>El Artífice escribe texto: no genera imágenes ni audio binarios salvo con herramientas MCP aprobadas (por ejemplo, Aseprite). Los talleres en paralelo copian como texto: un binario se corrompería.</td>
+        <td>Usa formatos de texto (SVG, sprites procedurales) o un MCP como recurso, y no pongas en paralelo subtareas con binarios.</td></tr>
+      <tr><td><strong>Escritorio o móvil nativo</strong></td><td><span class="lvl bad">Limitado</span></td>
+        <td>No hay forma de mirar la aplicación: el navegador del gremio solo abre la web local. Los emuladores y simuladores quedan fuera.</td>
+        <td>Verifica la lógica con tests y deja la interfaz a tu revisión. Para Godot u otros motores, usa su MCP como recurso aprobado.</td></tr>
+      <tr><td><strong>Con base de datos o servicios externos</strong></td><td><span class="lvl bad">Limitado</span></td>
+        <td>Las comprobaciones no tienen shell y no pueden levantar servicios. Con sandbox no hay red. Las migraciones son rutas sensibles.</td>
+        <td>Tests con dobles o bases en memoria (SQLite). Los cambios de esquema, con tu aprobación.</td></tr>
+      <tr><td><strong>Monorepos grandes</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>Como máximo 10 subtareas por plan, 30 rutas y 20 criterios por subtarea, 200 archivos y 20 000 líneas por misión. La huella de integridad cubre hasta 300 archivos por ruta protegida. El plan tiene que caber en el diálogo (3000 caracteres).</td>
+        <td>Divide el trabajo en misiones más pequeñas y acota las rutas a paquetes concretos.</td></tr>
+      <tr><td><strong>Cambios de dependencias, CI o infraestructura</strong></td><td><span class="lvl warn">Con tu aprobación</span></td>
+        <td>Nunca se aprueban automáticamente. Nadie ejecuta <code>npm install</code> ni similares sin preguntarte: el Artífice no tiene shell.</td>
+        <td>Apruébalo en el diálogo e instala tú las dependencias, o deja que el Maestro lo pida.</td></tr>
+      <tr><td><strong>Sin tests ni forma de verificar</strong></td><td><span class="lvl warn">Aceptable</span></td>
+        <td>Sin una comprobación ejecutable, la evidencia depende solo de la revisión del Paladín.</td>
+        <td>Deja que la primera subtarea escriba los tests (especificación ejecutable). El Archimago lo propone solo.</td></tr>
+      <tr><td><strong>Sin git, o con commits durante la misión</strong></td><td><span class="lvl bad">No soportado</span></td>
+        <td><code>diff-scope</code> necesita git. Un commit o un <code>reset</code> mientras la misión trabaja mueve el <code>HEAD</code> y hace fallar la verificación.</td>
+        <td>Inicializa git y no hagas commits hasta que la misión termine.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="limites">
+  <h2>9. Limitaciones generales</h2>
+  <ul>
+    <li><strong>API de mods en acceso anticipado.</strong> Probado con 2.1.295; una versión anterior del CLI da fallos falsos en la validación y en los tests.</li>
+    <li><strong>Sin sandbox por defecto.</strong> <code>sandbox: docker</code> requiere Docker funcionando. Quedan fuera del contenedor el servidor de vista previa y el <code>git</code> del propio mod, y el servicio de Docker es privilegiado en tu máquina.</li>
+    <li><strong>Paralelo solo en la implementación.</strong> La integración, la verificación y la revisión siguen en serie. No entran las subtareas visuales ni las que comparten rutas. El Artífice en paralelo no puede ejecutar comprobaciones: se verifica al integrar. Todavía no se ha probado en una misión real.</li>
+    <li><strong>Coste de la sesión principal.</strong> Crece con la longitud de la conversación; para medir costes reales, usa una sesión nueva por misión.</li>
+    <li><strong>Esfuerzo no confirmable.</strong> Se impone en cada petición, pero la respuesta de la API no lo devuelve.</li>
+    <li><strong>Reinicio con un Artífice a medias.</strong> Está probado con tests, no en vivo. Los agentes perdidos no se relanzan solos: decides tú con <code>/quest-resume</code>.</li>
+    <li><strong>Tachado de secretos.</strong> Solo con patrones conocidos en <code>runs/</code> y <code>log.jsonl</code>. No pongas secretos en la salida de tus tests.</li>
+    <li><strong>Idioma.</strong> La interfaz y el resumen del Escriba están en español.</li>
+    <li><strong>Marketplace privado.</strong> La instalación desde GitHub requiere acceso al repositorio.</li>
+  </ul>
+</section>
+
+<section id="problemas">
+  <h2>10. Solución de problemas</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Síntoma</th><th>Causa probable</th><th>Qué hacer</th></tr></thead>
+    <tbody>
+      <tr><td><code>/quest-status</code> no responde</td><td>El plugin no está cargado.</td><td>Revisa la instalación o <code>CLAUDE_CODE_PLUGIN_DIRS</code> e inicia una sesión nueva.</td></tr>
+      <tr><td>El plan se rechaza al enviarlo</td><td>Rutas mal formadas, un ejecutable no permitido, código en línea, un plan de varias subtareas sin Archimago o un plan que no cabe en el diálogo.</td><td>El error dice qué campo falla; el Maestro corrige y reenvía.</td></tr>
+      <tr><td>La misión queda BLOCKED</td><td>El mismo fallo se repitió o se agotaron los intentos.</td><td><code>/quest-resume</code> concede un intento más; o replanifica con otra estrategia.</td></tr>
+      <tr><td>La misión queda HALTED por límite</td><td>Tokens, coste, tiempo, uso de la suscripción, archivos o líneas.</td><td>Sube el límite en la configuración y usa <code>/quest-resume</code>.</td></tr>
+      <tr><td>HALTED por seguridad</td><td>Alguien modificó el estado del gremio o el plan aprobado fuera del mod.</td><td>Revisa <code>.guildflow/log.jsonl</code> y abre una misión nueva.</td></tr>
+      <tr><td>«sandbox Docker no disponible»</td><td>Docker Desktop está parado.</td><td>Ábrelo y reanuda; la comprobación nunca se ejecuta fuera.</td></tr>
+      <tr><td>«sin imagen Docker para X»</td><td>El ejecutable no tiene imagen en <code>sandboxImages</code>.</td><td>Añade <code>X=imagen</code> o desactiva el sandbox.</td></tr>
+      <tr><td>«conflicto al integrar» un taller</td><td>Sus rutas cambiaron en el árbol principal mientras trabajaba.</td><td>Nada: la subtarea vuelve a la cola y se reintenta.</td></tr>
+      <tr><td><code>claude plugin test</code> falla sin motivo</td><td>CLI anterior a 2.1.295.</td><td>Actualízalo o usa el <code>claude.exe</code> de Desktop.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="glosario">
+  <h2>11. Glosario del gremio</h2>
+  <p>Con el tema <code>gremio</code>, cada mensaje temático lleva el dato exacto detrás. Las instrucciones a los agentes son neutras, así que el tema no gasta tokens.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Término</th><th>Significa</th></tr></thead>
+    <tbody>
+      <tr><td>Pergamino de misión · «Sellar el pergamino»</td><td>Plan · aprobarlo</td></tr>
+      <tr><td>Encargo</td><td>Subtarea</td></tr>
+      <tr><td>Forja · Taller</td><td>Implementación · copia aislada de un Artífice en paralelo</td></tr>
+      <tr><td>Prueba de fuego</td><td>Comprobación automática (tests)</td></tr>
+      <tr><td>Juicio del Paladín</td><td>Revisión</td></tr>
+      <tr><td>Encrucijada</td><td>Bloqueada: necesita tu decisión</td></tr>
+      <tr><td>Campamento · «Levantar el campamento»</td><td>En pausa · reanudar</td></tr>
+      <tr><td>El gremio se retira</td><td>Detenida</td></tr>
+      <tr><td>Bitácora · Crónica</td><td>Registro · resumen final</td></tr>
+      <tr><td>Tesoro gastado</td><td>Consumo y coste</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  GuildFlow 0.3.0 · <code>capibara-html/GuildFlow</code> · Más detalle: <code>docs/08-guildflow-implementation.md</code> (diseño), <code>docs/09-security-review.md</code> (seguridad) y <code>docs/10-test-results.md</code> (pruebas). Para guardarla en PDF, imprime esta página.
+</footer>
+</main>
+</div>
+</body>
+</html>
