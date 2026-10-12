@@ -212,4 +212,3 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - Worktrees y Artífices en paralelo: solo se admite `isolation: none`, en secuencial.
 - Escriba con modelo.
-- Empaquetado como marketplace.

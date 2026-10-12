@@ -1,0 +1,12 @@
+{
+  "name": "guildflow",
+  "owner": { "name": "capibara-html" },
+  "description": "GuildFlow: un gremio de agentes para Claude Code con planes verificables, aprobación humana y límites duros",
+  "plugins": [
+    {
+      "name": "guildflow",
+      "source": "./guildflow",
+      "description": "Misiones de programación con roles (Maestro, Archimago, Artífice, Paladín), aprobación humana, verificación por el mod y límites duros"
+    }
+  ]
+}

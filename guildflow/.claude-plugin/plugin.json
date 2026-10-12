@@ -1,6 +1,6 @@
 {
   "name": "guildflow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "GuildFlow: misiones de programación con roles (Maestro, Archimago, Artífice, Paladín), aprobación humana, verificación por el mod y límites duros",
   "author": { "name": "capibara-html" },
   "license": "MIT",

@@ -20,7 +20,15 @@ Un mod hace cumplir el ciclo en código: plan con criterios verificables, aproba
 
 ## Cargarlo
 
-**Desktop (Code tab) o CLI, cualquier sesión.** Añade la carpeta del plugin a `CLAUDE_CODE_PLUGIN_DIRS` en el bloque `env` de `~/.claude/settings.json`, con la ruta absoluta y sin comillas extra:
+**Instalarlo desde el marketplace** (recomendado). En una sesión de Claude Code en terminal:
+
+```
+/plugin install guildflow --marketplace capibara-html/GuildFlow
+```
+
+Responde `y` para añadir el marketplace, elige el ámbito (el de usuario es el primero) y ajusta las opciones en la pantalla que aparece; después puedes cambiarlas con `/plugin configure guildflow@guildflow`. Desde una carpeta local en vez de GitHub: `claude plugin marketplace add <ruta>/GuildFlow` y luego `claude plugin install guildflow@guildflow`. Instalado así, no lo cargues además por `CLAUDE_CODE_PLUGIN_DIRS`: tendrías dos copias.
+
+**Para desarrollarlo: Desktop (Code tab) o CLI, cualquier sesión.** Añade la carpeta del plugin a `CLAUDE_CODE_PLUGIN_DIRS` en el bloque `env` de `~/.claude/settings.json`, con la ruta absoluta y sin comillas extra:
 
 ```json
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "C:\\Users\\<tú>\\Desktop\\GuildFlow\\guildflow" } }

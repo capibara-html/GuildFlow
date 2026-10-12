@@ -77,7 +77,7 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 - ~~Lista blanca de extensiones de código para `autoApprovePlan`.~~ **Hecho (2026-10-12):** `autoApproveExtensions`, comprobada al aprobar y al escribir, más la lista negra de nombres sensibles.
 - Worktrees para Artífices en paralelo + integración en serie.
 - Escriba-LLM opcional (Haiku) para resúmenes.
-- Empaquetado como marketplace (`.claude-plugin/marketplace.json`) y guía de instalación.
+- ~~Empaquetado como marketplace (`.claude-plugin/marketplace.json`) y guía de instalación.~~ **Hecho (2026-10-12):** marketplace `guildflow` en la raíz del repositorio (`source: ./guildflow`), versión 0.3.0. Instalación probada desde la carpeta en una configuración aislada (`10` V22); desde GitHub, cuando la rama esté en `main`.
 
 ### Aplazado (sin fecha)
 
