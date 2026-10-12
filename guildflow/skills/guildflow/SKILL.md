@@ -14,6 +14,7 @@ Herramienta de control: `mcp__guildflow__quest` con `action`:
 | `status` | en cualquier momento: estado real, criterios, agentes, consumo, siguiente paso |
 | `submit_plan` + `plan` | en PLANNING (o BLOCKED para replanificar): el mod valida y gestiona la aprobación |
 | `start_task` + `taskId` | en DISPATCH o FIXING: abre la plaza de un Artífice para esa subtarea |
+| `start_parallel` + `taskId` | con `maxParallelArtifices` > 1: abre un taller para otra subtarea lista mientras el carril principal sigue |
 | `start_review` | en REVIEWING: abre la plaza del Paladín |
 | `verify` | en VERIFYING, solo si las comprobaciones automáticas no llegaron a ejecutarse |
 | `block` + `reason` | cuando necesitas una decisión humana que no puedes tomar |
@@ -62,7 +63,9 @@ Todo lo demás lo encadenas tú, **en el mismo turno**, hasta terminar la misió
    - llama a `start_task {taskId}`;
    - lanza Agent con `subagent_type: "guildflow:artifice"` y **un mensaje de una línea**. El mod entrega al agente el brief completo, sus recursos y su modelo.
 
-   Una subtarea a la vez.
+   Una subtarea a la vez en el carril principal.
+
+   **En paralelo** (solo si `status` o el paso siguiente lo ofrecen, con `maxParallelArtifices` > 1): antes de lanzar el Artífice del carril principal, llama a `start_parallel {taskId}` con otra subtarea lista y lánzala con Agent en **segundo plano** (`run_in_background: true`). Después sigue con el carril principal en primer plano. El Artífice en paralelo trabaja en su taller; cuando termina, el mod lo integra él solo en cuanto el carril principal queda libre, y lo verifica y lo revisa como cualquier otra subtarea. Si `start_parallel` lo rechaza, sigue en serie. No esperes al de segundo plano para avanzar: el aviso de que terminó te llega solo.
 7. **Verificar.** Al terminar el Artífice, el mod ejecuta las comprobaciones y `diff-scope`. Si algo falla, la misión pasa a FIXING.
 8. **Revisar.** En REVIEWING, llama a `start_review` y lanza Agent con `subagent_type: "guildflow:paladin"` y un mensaje de una línea. Con todo en PASS, la subtarea queda terminada.
 9. **Corregir.** En FIXING, llama a `start_task` con la misma subtarea. Si el mismo fallo se repite, cambia de estrategia en el mensaje. Si el mod detiene la misión (BLOCKED o HALTED), presenta las opciones a la persona. **Nunca relajes los criterios por tu cuenta.**

@@ -59,7 +59,8 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `autoApprovePlan` | `false` | Aprueba sin diálogo **solo** los planes que no son `large` y cuyos archivos tienen una extensión de `autoApproveExtensions` y un nombre no sensible: nada de dependencias, CI o despliegue, migraciones, secretos, configuración del repo, del editor o de herramientas que ejecutan código (`*.config.js`, `.algorc`), ni instrucciones de agentes (`CLAUDE.md`, `.claude/`, `.mcp.json`…). Dentro de un directorio concedido, cada archivo se comprueba al escribirlo |
 | `autoApproveExtensions` | código, tests, estilos, HTML, Markdown, SVG | Lista blanca de extensiones para la aprobación automática. Por defecto sin `json`, `yaml` ni `toml` (configuración) ni archivos sin extensión |
 | `maxAttemptsPerTask` · `maxQuestIterations` · `maxSameFailure` · `maxNoProgressRounds` | 3 · 8 · 2 · 2 | Topes 10 · 30 · 5 · 5 |
-| `maxAgentsPerQuest` · `maxConcurrentAgents` | 40 · 3 | Techo; el presupuesto real se calcula del plan (2 por intento y subtarea). Topes 60 · 3 (hoy la ejecución es secuencial) |
+| `maxAgentsPerQuest` · `maxConcurrentAgents` | 40 · 3 | Techo; el presupuesto real se calcula del plan (2 por intento y subtarea). Topes 60 · 3 |
+| `maxParallelArtifices` | 1 | Artífices a la vez contando el del carril principal (tope 3). Con 2 o 3, las subtareas listas, sin trabajo visual y con rutas disjuntas se implementan en talleres (`.guildflow/wt/`) mientras el carril principal sigue; la integración, la verificación y la revisión siguen en serie. Si el árbol principal cambió en las rutas de un taller, no se integra y la subtarea vuelve a la cola |
 | `tokenBudgetPerQuest` · `costBudgetUsd` · `rateLimitPercent` · `wallClockMinutes` | 2M · 25 · 90 · 60 | El USD es equivalente a precio de API, no lo facturado |
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |

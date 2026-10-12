@@ -75,7 +75,7 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 
 - ~~Sandbox opcional: ejecutar `run_check` dentro de un contenedor o máquina virtual configurable.~~ **Hecho (2026-10-12):** opción `sandbox: docker` (ver `09` §1 y `10` V21).
 - ~~Lista blanca de extensiones de código para `autoApprovePlan`.~~ **Hecho (2026-10-12):** `autoApproveExtensions`, comprobada al aprobar y al escribir, más la lista negra de nombres sensibles.
-- Worktrees para Artífices en paralelo + integración en serie.
+- ~~Worktrees para Artífices en paralelo + integración en serie.~~ **Hecho (2026-10-12):** talleres en lugar de worktrees de git (`08` §9), opción `maxParallelArtifices`.
 - ~~Escriba-LLM opcional (Haiku) para resúmenes.~~ **Hecho (2026-10-12):** opción `escriba: haiku`, una llamada `$.model.complete` sin herramientas después de cerrar la misión.
 - ~~Empaquetado como marketplace (`.claude-plugin/marketplace.json`) y guía de instalación.~~ **Hecho (2026-10-12):** marketplace `guildflow` en la raíz del repositorio (`source: ./guildflow`), versión 0.3.0. Instalación probada desde la carpeta en una configuración aislada (`10` V22); desde GitHub, cuando la rama esté en `main`.
 

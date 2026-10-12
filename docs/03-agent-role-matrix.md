@@ -53,7 +53,8 @@ Identificadores verificados para la versión instalada (2.1.295): alias `opus | 
 2. **Hook `agent.spawn`**: si se lanza un `guildflow:*`, reescribe `model` con el del rol aunque el Maestro haya pasado otro, y rechaza el lanzamiento si se superan los límites (ver `04-autonomy-and-safety.md`).
 3. **Hook `turn.step`**: si llega un `effort` distinto del que corresponde, lo corrige. Desde la Fase 4: Artífice según la subtarea (`effort` del plan o complejidad), Paladín `high`, Archimago `archimagoEffort` y Maestro `maestroEffort` (`medium`) mientras la misión trabaja; ver `08` §2. Matiz: `CLAUDE_CODE_EFFORT_LEVEL` en el entorno tiene prioridad sobre el frontmatter según la documentación; el mod lo **detecta y avisa** en `session.start`.
 4. **Hook `tool.call` con `agentId`**: bloquea ediciones fuera de las rutas asignadas, y cualquier `Edit`/`Write` del Paladín aunque la lista de herramientas falle.
-5. **Anidamiento**: los tres subagentes llevan `Agent` en `disallowedTools`. Toda delegación pasa por el Maestro, lo que deja **un nivel** de profundidad, aunque la plataforma admita tres.
+5. **Artífices en paralelo** (Fase 4): con `maxParallelArtifices` > 1, un Artífice puede trabajar en un taller aparte, en segundo plano; la política lo trata con su propia subtarea y solo le deja escribir en el taller. Ver `08`.
+6. **Anidamiento**: los tres subagentes llevan `Agent` en `disallowedTools`. Toda delegación pasa por el Maestro, lo que deja **un nivel** de profundidad, aunque la plataforma admita tres.
 
 > Limitación conocida: el Paladín tiene `Bash`, y Bash puede escribir archivos. El veto real es el hook `tool.call`, que solo permite los comandos de verificación declarados (lista blanca por prefijo de argv). Eso queda pendiente de validar en la PoC.
 

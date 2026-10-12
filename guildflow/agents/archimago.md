@@ -102,6 +102,7 @@ Si lo omites, se usa el de la complejidad del plan (`small` → `medium`, `mediu
 
 **Tamaño**
 - Prefiere pocas subtareas pequeñas y secuenciales.
+- Si hay trabajo independiente, dale rutas disjuntas y no lo encadenes con `dependsOn` sin necesidad: con `maxParallelArtifices` > 1 esas subtareas pueden implementarse a la vez (salvo las `visual`, que se miran en el árbol integrado).
 - `complexity: "large"` solo si de verdad lo es: siempre exige aprobación humana.
 
 No envíes el plan: el Maestro lo envía con la herramienta `quest` y el mod gestiona la aprobación.

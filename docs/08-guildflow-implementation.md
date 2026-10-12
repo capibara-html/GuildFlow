@@ -183,6 +183,12 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - **Contabilidad:** se registra cada petición en `turn.step`, con el desglose `input`, `output` y `cacheWrite` y su coste propio (`costDelta`). La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
 - **Interruptor de circuito:** cada 30 s y después de cada petición.
+- **Artífices en paralelo (Fase 4, `maxParallelArtifices`, por defecto 1):** solo la implementación va en paralelo; la integración, la verificación y la revisión siguen en serie en el árbol principal, con el mismo núcleo de seguridad.
+  - **Talleres, no worktrees de git.** Las misiones no hacen commits: un worktree desde el `HEAD` aprobado no tendría el trabajo de las subtareas ya terminadas, e integrar con `git merge` puede ejecutar hooks del repositorio. El taller es una copia de las rutas de la subtarea en `.guildflow/wt/<id>-<intento>-<t>`.
+  - `quest start_parallel {taskId}` (`parallelCandidates`): la subtarea está pendiente, con sus dependencias terminadas, sin `visual` y con rutas disjuntas de la del carril principal y de los otros talleres. Se guarda la huella de sus rutas en el árbol principal (`Bench.seed`) y se abre una plaza `parallel`.
+  - El Artífice se lanza en segundo plano con su subtarea como la activa (brief, recursos, modelo y esfuerzo). La política (`decideBench`) solo le deja escribir en su taller, dentro de sus rutas y fuera de las protegidas, sin depender de la fase del carril principal. No tiene `run_check`.
+  - Al terminar queda `queued`. Con el carril principal en `DISPATCH`, `integrateReady` compara la huella: si coincide, copia el taller, registra las escrituras y pasa a `VERIFYING` (`integrate`); si no, `benchConflict` y la subtarea vuelve a `pending` con el intento gastado. Un fallo de verificación o de revisión se corrige en serie (`FIXING`).
+  - El carril principal no puede arrancar una subtarea que pise un taller en marcha (`benchClash`). Tras un reinicio, un taller con su agente perdido vuelve a la cola sin gastar intento.
 - **Escriba con modelo (Fase 4):** opción `escriba` (`none` por defecto o `haiku`). Al cerrar, `finalize` escribe la crónica mecánica y pasa a `LOGGED`; solo entonces pide a Haiku (`$.model.complete`, sin herramientas, esfuerzo `low`, 600 tokens, 20 s) un resumen de 3-5 frases, que `withEscriba` inserta arriba marcado como generado. Si falla, queda la crónica mecánica y el registro dice `escriba.failed`.
 - **Sandbox (Fase 4):** `sandbox` (`none` por defecto o `docker`) y `sandboxImages` (`ejecutable=imagen`). Con `docker`, `execute` envuelve cada comprobación con `dockerArgv`, y `validatePlan` rechaza los ejecutables sin imagen. La opción queda congelada en los límites de la misión. Detalle y garantías en `09` §1.
 - **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables`, `autoApprovePlan` (desactivado por defecto) y `trustedTools`, las herramientas de recursos que no impiden la aprobación automática; por defecto Context7 y `WebSearch`.
@@ -213,4 +219,3 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 ## 11. Fuera de alcance en esta fase
 
-- Worktrees y Artífices en paralelo: solo se admite `isolation: none`, en secuencial.
