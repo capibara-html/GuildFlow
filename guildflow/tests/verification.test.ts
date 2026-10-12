@@ -77,6 +77,17 @@ describe('ejecución controlada', () => {
     expect(m.runs.length).toBe(0)
   })
 
+  test('regresión: la subtarea de especificación que escribe los tests protegidos puede ejecutarlos', async () => {
+    const m = memIo(seed, () => ({ exitCode: 0, stdout: '# tests 1', stderr: '' }))
+    const q = implementing()
+    q.baseline!.protectedHashes = await fingerprint(m.io, ROOT, ['test/'])
+    m.files.set(`${ROOT}/test/math.test.js`, 'test(nuevo)')
+    q.plan!.tasks.find(t => t.id === 't1')!.paths = ['test/']
+    expect((await execute(m.io, q, DEF)).integrity).toBeNull()
+    q.plan!.tasks.find(t => t.id === 't1')!.paths = ['src/'] // otra subtarea: sigue siendo manipulación
+    expect((await execute(m.io, q, DEF)).integrity).toContain('modificada')
+  })
+
   test('el código bajo prueba que reescribe su test o quest.json durante la ejecución invalida el resultado', async () => {
     for (const victim of [`${ROOT}/test/math.test.js`, `${ROOT}/.guildflow/quest.json`]) {
       const box: { files?: Map<string, string> } = {}

@@ -2,7 +2,7 @@
 // El modelo solo aporta un identificador; nunca una cadena de comando ni argumentos.
 import type { CheckDef, Io, Quest } from '../types'
 import { diskMatches } from './persistence'
-import { exeName, hash, inside, matchesEntry, normalizeAbs, parseEntry, type PathEntry } from './validation'
+import { exeName, hash, inside, matchesEntry, normalizeAbs, parseEntry, pathsOverlap, type PathEntry } from './validation'
 
 export const OUTPUT_LIMIT = 16_000
 
@@ -177,7 +177,11 @@ export async function execute(io: Io, q: Quest, def: CheckDef): Promise<Executio
   if (!cwd || !inside(cwd, root)) return done({ ...base, error: `directorio de trabajo fuera del proyecto: ${def.cwd}` })
   const expected = q.baseline?.protectedHashes ?? {}
   const now = await fingerprint(io, root, def.protects)
-  const changed = def.protects.filter(p => expected[p] !== undefined && expected[p] !== now[p])
+  // La subtarea activa que escribe estas rutas (especificación ejecutable) aún no terminó: cambiarlas es su trabajo,
+  // no una manipulación. Sus huellas pasan a ser la referencia al quedar revisada (rebaseProtected).
+  const writer = q.plan?.tasks.find(t => t.id === q.activeTask)
+  const own = (p: string) => !!writer && q.progress[writer.id]?.status !== 'done' && writer.paths.some(w => pathsOverlap(w, p))
+  const changed = def.protects.filter(p => !own(p) && expected[p] !== undefined && expected[p] !== now[p])
   if (changed.length) return done({ ...base, error: null, integrity: `definición de la comprobación modificada tras la aprobación: ${changed.join(', ')}`, exitCode: -1, stderr: `integridad: ${changed.join(', ')}` })
   // El código bajo prueba corre con los permisos del usuario (los mods no tienen sandbox de procesos):
   // se comprueba DESPUÉS de cada ejecución que no tocó las rutas protegidas ni el estado del gremio.

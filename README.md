@@ -233,7 +233,7 @@ En Windows, si el CLI de terminal es anterior a 2.1.295, sirve el binario que tr
 
 ## Estado del proyecto
 
-Versión **0.3.0**:
+Versión **0.3.1**:
 
 - **Fases 1 a 4 implementadas**:
   - núcleo del gremio;
@@ -244,7 +244,7 @@ Versión **0.3.0**:
   - sandbox Docker;
   - Artífices en paralelo;
   - Escriba opcional con Haiku.
-- **Pruebas:** 213 automáticas en verde, más misiones reales de principio a fin; la más grande, un ajedrez pixel art de 5 subtareas y 26 criterios.
+- **Pruebas:** 214 automáticas en verde, más misiones reales de principio a fin; la más grande, un ajedrez pixel art de 5 subtareas y 26 criterios.
 
 Limitaciones conocidas:
 
