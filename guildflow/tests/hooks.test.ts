@@ -412,6 +412,9 @@ describe('panel del gremio', () => {
       for (const t of ['Encargos', 'Tesoro', 'Bitácora', 'Criterios', 'Tokens']) expect(await ui.find({ text: new RegExp(t) })).toBeDefined()
       expect((await ui.findAll({ type: 'Svg' })).length > 0).toBe(surface === 'desktop')
       expect(await ui.find({ key: 'resume' })).toBeUndefined()
+      expect(await ui.find({ text: /Estado real: IMPLEMENTING · Subtarea: t1/ })).toBeDefined()
+      await ui.press({ key: 'detail' }) // el mismo texto que /quest-status
+      expect(await ui.find({ text: /Agentes activos/ })).toBeDefined()
       await ui.press({ key: 'halt' })
       expect(w.asked[0]).toContain('¿Detener la misión')
       expect(saved(w).state).toBe('HALTED')

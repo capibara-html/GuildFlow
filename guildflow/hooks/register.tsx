@@ -21,6 +21,8 @@ const viewA = atom({ plugin: 'guildflow', key: 'view' } as const, null as Quest 
 /** Animación del tablón: null = aún no leída de $.store (allí persiste entre reinicios). */
 const animA = atom({ plugin: 'guildflow', key: 'anim' } as const, null as boolean | null)
 /** Bitácora del panel (lo más reciente primero), de la misión `quest`. */
+/** Estado completo desplegado en el panel (botón «Estado completo»; el mismo texto que /quest-status). */
+const detailA = atom({ plugin: 'guildflow', key: 'detail' } as const, false as boolean)
 const recentA = atom({ plugin: 'guildflow', key: 'recent' } as const, { quest: null, items: [] } as { quest: string | null; items: Entry[] })
 const RECENT_MAX = 8
 const bootA = atom({ plugin: 'guildflow', key: 'boot' } as const, null as { sessionId: string; at: number } | null)
@@ -1124,7 +1126,9 @@ export const register: Register = (on, options) => {
       await $.store.set('boardAnim', !anim)
       await update($, animA, () => !anim)
     }
-    const board = { anim, recent: recent.quest === q?.id ? recent.items : [], onHalt, onResume, onToggleAnim }
+    const detail = await read($, detailA)
+    const onToggleDetail = () => update($, detailA, d => !d)
+    const board = { anim, recent: recent.quest === q?.id ? recent.items : [], detail, onHalt, onResume, onToggleAnim, onToggleDetail }
     return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', th, board)
   })
 }

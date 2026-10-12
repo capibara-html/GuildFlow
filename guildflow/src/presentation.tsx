@@ -1,8 +1,9 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
-// Separada del dominio: el tablón pixel art (src/sprites.ts) se dibuja aquí sin tocar machine.ts.
+// Separada del dominio: la oficina pixel art (src/sprites.ts) se dibuja aquí sin tocar machine.ts.
 import type { AgentRecord, Limits, Plan, Quest, TaskStatus } from '../types'
-import { agentBudget, elapsedMs, isActive, isStopped, nextStep, progressSummary } from './machine'
-import { scene, type Pose, type Station } from './sprites'
+import { agentBudget, elapsedMs, isActive, isStopped, isWorking, nextStep, progressSummary } from './machine'
+import { TOOL } from './policy'
+import { animates, scene, type NoteState, type Plaque, type Pose, type SceneView, type Station } from './sprites'
 import { taskEffort } from './validation'
 import { LABELS, stateTitle, voice, type Theme } from './theme'
 
@@ -44,13 +45,75 @@ export const stateColor = (s: string) => STATE_COLOR[s] ?? '#6fa8f5'
 /** Agentes que se muestran como activos: solo los que el registro tiene en curso (nunca perdidos). */
 export const liveAgents = (q: Quest) => q.agents.filter(a => a.status === 'running')
 
-/** Pose de cada puesto del tablón, solo con datos reales: un rol trabaja si tiene un agente en curso. */
-export function poseOf(q: Quest, s: Station): Pose {
-  if (s === 'maestro') return ['AWAITING_APPROVAL', 'BLOCKED'].includes(q.state) ? 'alert' : ['INTAKE', 'PLANNING', 'DISPATCH', 'VERIFYING', 'FIXING'].includes(q.state) && !liveAgents(q).length ? 'work' : 'rest'
-  if (s === 'escriba') return q.state === 'DONE' ? 'work' : 'rest'
-  return liveAgents(q).some(a => a.role === s) ? 'work' : 'rest'
+const finished = (q: Quest) => q.state === 'DONE' || q.state === 'LOGGED'
+
+/**
+ * Pose de cada puesto: el ÚNICO mapeo de estado a pose, solo con datos del motor (estado de la misión, registro de
+ * agentes y su última herramienta). Nada trabaja si no hay un agente en curso; con la misión parada, nadie trabaja.
+ */
+export function poseOf(q: Quest | null, s: Station): Pose {
+  if (!q) return 'idle'
+  const done = finished(q)
+  if (s === 'maestro') {
+    if (done) return 'success'
+    if (q.state === 'AWAITING_APPROVAL') return 'awaiting'
+    if (q.state === 'BLOCKED' || (q.state === 'HALTED' && q.haltKind !== 'user')) return 'blocked'
+    if (!isWorking(q) || liveAgents(q).length) return 'idle' // en pausa, detenida o esperando a sus agentes
+    return q.state === 'INTAKE' || q.state === 'PLANNING' ? 'thinking' : 'working'
+  }
+  if (s === 'escriba') return q.state === 'DONE' ? 'working' : q.state === 'LOGGED' ? 'success' : 'idle'
+  const live = liveAgents(q).filter(a => a.role === s)
+  if (live.length && isWorking(q)) {
+    const tool = live[live.length - 1]!.lastTool
+    if (s === 'archimago') return tool === 'Read' ? 'working' : 'thinking'
+    if (s === 'artifice') return tool === TOOL.runCheck ? 'reviewing' : 'working'
+    return tool === TOOL.runCheck ? 'working' : 'reviewing'
+  }
+  const mine = q.agents.filter(a => a.role === s)
+  const last = mine[mine.length - 1]
+  if (done) return mine.length ? 'success' : 'idle'
+  if (last?.status === 'lost' && !live.length) return 'lost'
+  // Bloqueo: se marca el puesto del último agente que trabajó la subtarea bloqueada
+  if (q.state === 'BLOCKED' && q.activeTask && [...q.agents].reverse().find(a => a.taskId === q.activeTask)?.role === s) return 'blocked'
+  return 'idle'
 }
-const POSE_TEXT: Record<Pose, string> = { work: 'en faena', rest: 'en reposo', alert: 'te necesita' }
+
+const NOTE: Record<TaskStatus, NoteState> = { pending: 'pending', active: 'active', parallel: 'active', fixing: 'active', verifying: 'checking', reviewing: 'review', queued: 'queued', done: 'done', blocked: 'blocked' }
+const PLAQUE: Partial<Record<string, Plaque>> = { AWAITING_APPROVAL: 'awaiting', BLOCKED: 'blocked', PAUSED: 'paused', HALTED: 'halted', DONE: 'done', LOGGED: 'done' }
+
+/** Uso del presupuesto: el mayor de tokens, coste equivalente y suscripción (los que el motor da). */
+export function budgetRatio(q: Quest): number {
+  const u = q.usage
+  const L = q.limits
+  const r = [(u.mainTokens + u.agentTokens) / L.tokenBudgetPerQuest]
+  if (u.costStartUsd !== null) r.push(u.costUsd / L.costBudgetUsd)
+  if (u.ratePercent !== null) r.push(u.ratePercent / L.rateLimitPercent)
+  return Math.max(0, ...r.filter(Number.isFinite))
+}
+
+/** La escena entera derivada de la misión: poses, notas del tablón, placa, hojas de la crónica y monedas del cofre. */
+export function cast(q: Quest | null, sheets: number): SceneView {
+  const stations = Object.keys(STATIONS) as Station[]
+  const poses = Object.fromEntries(stations.map(s => [s, poseOf(q, s)])) as Record<Station, Pose>
+  if (!q) return { poses, notes: [], plaque: 'none', sheets: 0, treasure: 0 }
+  const notes = (q.plan?.tasks ?? []).map(t => ({ state: NOTE[q.progress[t.id]?.status ?? 'pending'], current: t.id === q.activeTask }))
+  const r = budgetRatio(q)
+  const treasure = r <= 0 ? 0 : r < 0.3 ? 1 : r < 0.7 ? 2 : r < 0.9 ? 3 : 4
+  return { poses, notes, plaque: PLAQUE[q.state] ?? 'working', sheets: Math.max(0, Math.min(6, sheets)), treasure }
+}
+
+/** Qué hace cada puesto, en palabras (texto alternativo y línea bajo la escena). */
+const DOING: Record<Pose, Partial<Record<Station, string>> & { all?: string }> = {
+  idle: { all: 'en reposo' },
+  working: { maestro: 'coordina (sin agentes en curso)', archimago: 'lee el repositorio', artifice: 'forja (agente en curso)', paladin: 'pone a prueba (run_check)', escriba: 'escribe la crónica' },
+  thinking: { maestro: 'estudia el encargo y prepara el plan', archimago: 'traza el plan (agente en curso)' },
+  reviewing: { artifice: 'prueba su pieza (run_check)', paladin: 'revisa la subtarea (agente en curso)' },
+  success: { all: 'misión cumplida', escriba: 'crónica escrita' },
+  blocked: { all: 'bloqueado · necesita tu decisión' },
+  lost: { all: 'perdido tras un reinicio (no trabaja; no se relanza solo)' },
+  awaiting: { all: 'espera tu aprobación del plan' },
+}
+export const doing = (s: Station, p: Pose) => DOING[p][s] ?? DOING[p].all ?? p
 
 export function agentLine(a: AgentRecord, now: number): string {
   const st = STATIONS[a.role]
@@ -247,24 +310,40 @@ const SECTION: Record<Theme, Record<'progress' | 'tasks' | 'treasure' | 'log', s
   sobrio: { progress: 'Progreso', tasks: 'Subtareas', treasure: 'Consumo y límites', log: 'Registro reciente' },
 }
 
-/** Lo que el panel necesita además de la misión: preferencia de animación, bitácora y acciones. */
-export type Board = { anim: boolean; recent: Entry[]; onToggleAnim?: () => void; onHalt?: () => void; onResume?: () => void }
+/** Lo que el panel necesita además de la misión: animación, bitácora, detalle y acciones. */
+export type Board = { anim: boolean; recent: Entry[]; detail?: boolean; onToggleAnim?: () => void; onToggleDetail?: () => void; onHalt?: () => void; onResume?: () => void }
 
-/** Panel lateral: la sala del gremio, acciones, progreso, encargos, tesoro y bitácora. Solo datos reales. */
+const STATUS_TEXT: Record<TaskStatus, string> = { pending: 'pendiente', active: 'en la forja', parallel: 'en un taller (paralelo)', queued: 'lista para integrar', verifying: 'en verificación', reviewing: 'en revisión', fixing: 'en corrección', done: 'terminada', blocked: 'bloqueada' }
+/** Nivel de consumo en palabras (acompaña al color). */
+export const limitLabel = (r: number) => (r >= 0.9 ? ' · cerca del límite' : r >= 0.7 ? ' · elevado' : '')
+
+/** Panel lateral: cabecera de misión, la oficina, controles, progreso, encargos, tesoro y bitácora. Solo datos reales. */
 export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio', board: Board = { anim: true, recent: [] }) {
   const { Box, Text, Svg, Button } = el as Record<string, any>
-  if (!q) return <Text dimColor>{theme === 'gremio' ? 'El tablón está vacío. Escribe /quest <petición> para abrir una misión.' : 'Sin misión. Escribe /quest <petición> para abrir una.'}</Text>
   const g = theme === 'gremio'
-  const sec = SECTION[theme]
+  const view = cast(q, board.recent.length)
   const stations = Object.keys(STATIONS) as Station[]
-  const poses = Object.fromEntries(stations.map(s => [s, poseOf(q, s)])) as Record<Station, Pose>
-  const busy = stations.filter(s => poses[s] !== 'rest')
+  const office = desktop ? (
+    <Svg
+      source={scene(view, board.anim)}
+      alt={`Oficina del gremio: ${stations.map(s => `${STATIONS[s].name} ${doing(s, view.poses[s])}`).join(', ')}`}
+      isInteractive={board.anim && animates(view) ? true : undefined}
+    />
+  ) : null
+  if (!q)
+    return (
+      <Box flexDirection="column" gap={1}>
+        {office}
+        <Text dimColor>{g ? 'El tablón está vacío y el gremio descansa. Escribe /quest <petición> para abrir una misión.' : 'Sin misión. Escribe /quest <petición> para abrir una.'}</Text>
+      </Box>
+    )
+  const sec = SECTION[theme]
+  const active = q.activeTask ? q.plan?.tasks.find(t => t.id === q.activeTask) : undefined
+  const ap = active ? q.progress[active.id] : undefined
+  const title = (q.plan?.objective ?? q.request).replace(/\s+/g, ' ').slice(0, 90)
+  const busy = stations.filter(s => view.poses[s] !== 'idle')
   const taskOf = (s: Station) => liveAgents(q).find(a => a.role === s)?.taskId
-  const who = busy.length
-    ? busy.map(s => `${STATIONS[s].glyph} ${STATIONS[s].name} ${POSE_TEXT[poses[s]]}${taskOf(s) ? ` · ${taskOf(s)}` : ''}`).join('   ')
-    : g
-      ? 'Todo el gremio en reposo'
-      : 'Sin agentes en curso'
+  const who = busy.length ? busy.map(s => `${STATIONS[s].glyph} ${STATIONS[s].name}: ${doing(s, view.poses[s])}${taskOf(s) ? ` · ${taskOf(s)}` : ''}`) : [g ? 'Todo el gremio en reposo' : 'Sin agentes en curso']
   const meter = (label: string, r: number, value: string, color: string) => (
     <Box key={label} flexDirection="row" gap={1} alignItems="center">
       <Text>{label.padEnd(12)}</Text>
@@ -273,54 +352,76 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean, the
     </Box>
   )
   const ratio = (a: number, b: number) => (b > 0 ? a / b : 0)
-  const limit = (label: string, a: number, b: number, value: string) => meter(label, ratio(a, b), value, limitColor(ratio(a, b)))
+  const pct = (r: number) => `${Math.round(r * 100)} %`
+  const limit = (label: string, a: number, b: number, value: string) => meter(label, ratio(a, b), `${value} · ${pct(ratio(a, b))}${limitLabel(ratio(a, b))}`, limitColor(ratio(a, b)))
   const p = progressSummary(q)
+  const tasks = q.plan?.tasks ?? []
+  let failed = 0
+  let used = 0
+  let allowed = 0
+  for (const t of tasks) {
+    const pr = q.progress[t.id]
+    used += pr?.attempts ?? 0
+    allowed += t.maxAttempts + (pr?.bonusAttempts ?? 0)
+    for (const c of t.criteria) if (pr?.evidence[c.id]?.round === pr?.round && pr?.evidence[c.id]?.verdict === 'FAIL') failed += 1
+  }
+  const inFlight = tasks.filter(t => !['pending', 'done', 'blocked'].includes(q.progress[t.id]?.status ?? 'pending')).length
   const u = q.usage
   const L = q.limits
   const spent = u.mainTokens + u.agentTokens
   const act = actions(q)
+  const assignee = (id: string) => {
+    const a = [...q.agents].reverse().find(x => x.taskId === id)
+    return a ? `${STATIONS[a.role].name}${a.status === 'running' ? ' (en curso)' : a.status === 'lost' ? ' (perdido)' : ''}` : STATIONS.artifice.name
+  }
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
-        <Text bold color={stateColor(q.state)}>{`Tablón de misiones · ${q.id} · ${q.state}`}</Text>
+        <Text bold color={stateColor(q.state)}>{`${g ? '📜 Pergamino de misión' : 'Misión'} · ${title}`}</Text>
         <Text color={stateColor(q.state)}>{stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}</Text>
-        <Text dimColor>{q.request.slice(0, 200)}</Text>
+        <Text dimColor>{`Estado real: ${q.state}${active ? ` · Subtarea: ${active.id} · Intento: ${ap?.attempts ?? 0}/${active.maxAttempts + (ap?.bonusAttempts ?? 0)}` : ''} · ${q.id}`}</Text>
+        {q.plan ? <Text dimColor>{`Petición: ${q.request.replace(/\s+/g, ' ').slice(0, 160)}`}</Text> : null}
       </Box>
-      {desktop ? (
-        <Svg
-          source={scene(poses, board.anim)}
-          alt={`Sala del gremio: ${stations.map(s => `${STATIONS[s].name} ${POSE_TEXT[poses[s]]}`).join(', ')}`}
-          isInteractive={board.anim && busy.some(s => poses[s] === 'work') ? true : undefined}
-        />
-      ) : null}
-      <Text>{who}</Text>
+      {office}
+      <Box flexDirection="column">
+        {who.map(w => (
+          <Text key={w}>{w}</Text>
+        ))}
+      </Box>
       <Box flexDirection="row" gap={1}>
         {act.halt && board.onHalt ? <Button key="halt" label={g ? '⛔ Detener misión' : 'Detener misión'} onPress={board.onHalt} /> : null}
         {act.resume && board.onResume ? <Button key="resume" label={act.resume === 'approve' ? (g ? '📜 Revisar el plan' : 'Revisar el plan') : g ? '🏕️ Reanudar' : 'Reanudar'} onPress={board.onResume} /> : null}
+        {board.onToggleDetail ? <Button key="detail" label={board.detail ? 'Ocultar estado' : 'Estado completo'} onPress={board.onToggleDetail} /> : null}
         {desktop && board.onToggleAnim ? <Button key="anim" label={board.anim ? 'Animación: desactivar' : 'Animación: activar'} onPress={board.onToggleAnim} /> : null}
       </Box>
+      {board.detail ? <Text dimColor>{statusText(q, now)}</Text> : null}
       <Box flexDirection="column">
         <Text bold>{sec.progress}</Text>
-        {meter('Criterios', ratio(p.criteriaPassed, p.criteriaTotal), `${p.criteriaPassed}/${p.criteriaTotal}`, '#2ecc71')}
-        {meter('Subtareas', ratio(p.tasksDone, p.tasksTotal), `${p.tasksDone}/${p.tasksTotal}`, '#2ecc71')}
-        <Text dimColor>{`Siguiente: ${nextStep(q)}`}</Text>
+        {meter('Subtareas', ratio(p.tasksDone, p.tasksTotal), `${p.tasksDone}/${p.tasksTotal} terminadas${inFlight ? ` · ${inFlight} en curso` : ''}`, '#2ecc71')}
+        {meter('Criterios', ratio(p.criteriaPassed, p.criteriaTotal), `${p.criteriaPassed}/${p.criteriaTotal} aprobados${failed ? ` · ${failed} fallidos` : ''} · ${p.criteriaTotal - p.criteriaPassed - failed} pendientes`, '#2ecc71')}
+        <Text dimColor>{`Intentos usados: ${used}/${allowed} · Siguiente: ${nextStep(q)}`}</Text>
       </Box>
       <Box flexDirection="column">
         <Text bold>{sec.tasks}</Text>
-        {q.plan?.tasks.length ? (
-          q.plan.tasks.map(t => {
+        {tasks.length ? (
+          tasks.map(t => {
             const pr = q.progress[t.id]
-            const st = TASK[pr?.status ?? 'pending']
+            const status = pr?.status ?? 'pending'
+            const st = TASK[status]
             const marks = t.criteria.map(c => {
               const ev = pr?.evidence[c.id]
-              return ev && ev.round === pr.round ? (VERDICT[ev.verdict] ?? '·') : '·'
+              return ev && ev.round === pr?.round ? (VERDICT[ev.verdict] ?? '·') : '·'
             })
+            const last = Object.entries(pr?.evidence ?? {})
+              .filter(([, ev]) => ev.round === pr?.round)
+              .sort((a, b) => b[1].at - a[1].at)[0]
+            const why = status === 'blocked' ? (q.state === 'BLOCKED' && q.activeTask === t.id ? q.reason : pr?.lastFailure) : status !== 'done' ? pr?.lastFailure : null
             return (
               <Box key={t.id} flexDirection="column">
                 <Text color={st.color} dimColor={!st.color} bold={t.id === q.activeTask}>
-                  {`${st.glyph} ${t.id} ${t.title}  ${marks.join('')}  · intento ${pr?.attempts ?? 0}/${t.maxAttempts + (pr?.bonusAttempts ?? 0)}`}
+                  {`${st.glyph} ${t.id} ${t.title} — ${STATUS_TEXT[status]} · ${assignee(t.id)} · intento ${pr?.attempts ?? 0}/${t.maxAttempts + (pr?.bonusAttempts ?? 0)}`}
                 </Text>
-                {pr?.lastFailure && pr.status !== 'done' ? <Text dimColor>{`   último fallo: ${pr.lastFailure.slice(0, 160)}`}</Text> : null}
+                <Text dimColor>{`   criterios ${marks.join('')}${last ? ` · último veredicto: ${last[0]} ${last[1].verdict}` : ''}${why ? ` · ${status === 'blocked' ? 'motivo' : 'último fallo'}: ${why.slice(0, 140)}` : ''}`}</Text>
               </Box>
             )
           })
@@ -331,12 +432,13 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean, the
       <Box flexDirection="column">
         <Text bold>{sec.treasure}</Text>
         {limit('Tokens', spent, L.tokenBudgetPerQuest, `${fmtTokens(spent)} / ${fmtTokens(L.tokenBudgetPerQuest)}`)}
-        {u.costStartUsd !== null ? limit('Coste', u.costUsd, L.costBudgetUsd, `≈$${u.costUsd.toFixed(2)} / $${L.costBudgetUsd}`) : <Text dimColor>{'Coste        no disponible'}</Text>}
+        {u.costStartUsd !== null ? limit('Coste', u.costUsd, L.costBudgetUsd, `≈$${u.costUsd.toFixed(2)} / $${L.costBudgetUsd} equivalente API, no facturado`) : <Text dimColor>{'Coste        no disponible'}</Text>}
+        {u.ratePercent !== null ? limit('Suscripción', u.ratePercent, L.rateLimitPercent, `${u.ratePercent}% usado / umbral ${L.rateLimitPercent}%`) : null}
         {limit('Tiempo', elapsedMs(q, now), L.wallClockMinutes * 60_000, `${fmtDur(elapsedMs(q, now))} / ${L.wallClockMinutes} min`)}
-        {limit('Agentes', q.agentsSpawned, agentBudget(q), `${q.agentsSpawned} / ${agentBudget(q)}`)}
+        {limit('Agentes', q.agentsSpawned, agentBudget(q), `${q.agentsSpawned} / ${agentBudget(q)} lanzados`)}
         {limit('Iteraciones', q.iterations, L.maxQuestIterations, `${q.iterations} / ${L.maxQuestIterations}`)}
         {limit('Archivos', q.filesWritten.length, L.maxFilesChanged, `${q.filesWritten.length} / ${L.maxFilesChanged}`)}
-        {u.ratePercent !== null ? limit('Suscripción', u.ratePercent, L.rateLimitPercent, `${u.ratePercent}% / ${L.rateLimitPercent}%`) : null}
+        {q.diffLines !== null ? limit('Líneas diff', q.diffLines, L.maxDiffLines, `${q.diffLines} / ${L.maxDiffLines}`) : null}
       </Box>
       <Box flexDirection="column">
         <Text bold>{sec.log}</Text>

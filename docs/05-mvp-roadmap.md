@@ -8,7 +8,7 @@
 |---|---|---|
 | 1. PoC | **Completada.** 7 PASS y 1 INCONCLUSIVE (P8, `permissionMode`, que se descarta como control) | `06`, `07` |
 | 2. Núcleo del gremio | **Completada.** 125 pruebas automáticas. En vivo: misión de 3 subtareas con dependencias → `LOGGED`, misión de fallo → `BLOCKED`, recuperación tras reinicio de la sesión → `PAUSED` sin relanzar nada. Opcional: reinicio con un agente en curso | `08`, `09`, `10` |
-| 3. Tablón pixel art | **En curso.** 3.1 capa temática de rol hecha (textos de dos capas, voces, glosario, opción `theme`). Siguiente: tablón con sprites dibujados en Aseprite | §1, `11` §8 |
+| 3. Tablón pixel art | **Hecha.** 3.1 capa temática hecha. Oficina pixel art (200×120, cinco puestos, poses ligadas al motor) hecha y probada con el kit de pruebas (`12`); visto bueno de la persona usuaria | §1, `11` §8 |
 | 4. Endurecimiento | No iniciada | §1 |
 
 **Cambios respecto a lo planeado:**
@@ -62,6 +62,8 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 - Créditos y licencias en `ASSETS.md`.
 
 **Estado (2026-10-12):** 3.1, la capa temática, está hecha. El tablón también: sprites procedurales en `src/sprites.ts`, SMIL de 2 fotogramas con interruptor y licencias en `ASSETS.md`. El panel muestra la sala, las acciones, el progreso, los encargos, el tesoro y la bitácora. Falta verlo en vivo en Desktop y medir los fps con `Client` antes de pensar en animación continua.
+
+**Actualización (2026-10-12, tarde):** el tablón de cinco puestos en fila se sustituye por la **oficina del gremio** (`docs/12`): una sala de 200×120 con mostrador y tablón de encargos, mesa del Archimago, fragua, campo de pruebas, atril del Escriba y cofre; personajes 18×26 con ocho poses de una misma familia; un único mapeo de estado a pose en `presentation.tsx`. Probado con el kit de pruebas (213 pass), revisado sobre capturas de fixtures y con el visto bueno de la persona usuaria (sin capturas de Desktop). `Client` no dibuja `Svg`, así que no sirve para los sprites; la animación sigue siendo SMIL de dos fotogramas.
 
 **Antes de la Fase 3** (recomendado tras la Fase 2):
 - Opcional: V16b de `10-test-results.md` (reinicio con un Artífice en curso).

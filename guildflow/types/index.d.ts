@@ -256,8 +256,10 @@ declare module 'claude-code' {
       view: Quest | null
       /** Marca de carga: presente tras una recarga del mod, ausente tras reiniciar Desktop. */
       boot: { sessionId: string; at: number } | null
-      /** Animación SMIL del tablón (interruptor del panel); null = aún no leída de $.store. */
+      /** Animación SMIL de la oficina (interruptor del panel); null = aún no leída de $.store. */
       anim: boolean | null
+      /** Estado completo desplegado en el panel. */
+      detail: boolean
       /** Bitácora del panel: eventos legibles de la misión `quest`, lo más reciente primero. */
       recent: { quest: string | null; items: { at: number; text: string }[] }
     }
