@@ -37,7 +37,7 @@ Identificadores verificados para la versión instalada (2.1.295): alias `opus | 
 | **Artífice** `guildflow:artifice` | Subagente | `claude-sonnet-5-5` | `high` | `Read, Grep, Glob, Edit, Write, Bash` (o `PowerShell` en Windows) | `Agent, WebFetch, WebSearch` | 40 | `isolation: worktree` cuando hay Artífices en paralelo; edita solo las rutas que su subtarea tenga asignadas (lo impone el mod en `tool.call`) |
 | **Paladín** `guildflow:paladin` | Subagente | `claude-sonnet-5-5` | `high` | `Read, Grep, Glob, Bash` | `Edit, Write, NotebookEdit, Agent` | 25 | Ejecuta los comandos de verificación de la misión; devuelve un veredicto por criterio con evidencia. **Nunca** es la misma invocación que el Artífice |
 | **Escriba** | Código del mod | — | — | — | — | — | `log.jsonl` + panel; 0 tokens |
-| Escriba-LLM (opcional) `guildflow:escriba` | Subagente | `claude-haiku-5-5` | `low` | `Read` | todo lo demás | 3 | Solo resume al cerrar una misión |
+| Escriba con modelo (opcional, `escriba: haiku`) | **Llamada del mod** (`$.model.complete`), no subagente | `claude-haiku-5-5` | `low` | **ninguna** | — | 1 llamada, 600 tokens de salida, 20 s | Fase 4: al cerrar, resume en 3-5 frases la crónica mecánica y va arriba, marcado como generado; los datos no cambian. Sin herramientas, no puede leer, escribir ni delegar |
 
 **Sobre los niveles pedidos:**
 

@@ -183,6 +183,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 
 - **Contabilidad:** se registra cada petición en `turn.step`, con el desglose `input`, `output` y `cacheWrite` y su coste propio (`costDelta`). La sesión principal solo cuenta **mientras la misión trabaja**. Los agentes del gremio cuentan siempre. Las lecturas de caché se contabilizan aparte y no cuentan contra el presupuesto de tokens.
 - **Interruptor de circuito:** cada 30 s y después de cada petición.
+- **Escriba con modelo (Fase 4):** opción `escriba` (`none` por defecto o `haiku`). Al cerrar, `finalize` escribe la crónica mecánica y pasa a `LOGGED`; solo entonces pide a Haiku (`$.model.complete`, sin herramientas, esfuerzo `low`, 600 tokens, 20 s) un resumen de 3-5 frases, que `withEscriba` inserta arriba marcado como generado. Si falla, queda la crónica mecánica y el registro dice `escriba.failed`.
 - **Sandbox (Fase 4):** `sandbox` (`none` por defecto o `docker`) y `sandboxImages` (`ejecutable=imagen`). Con `docker`, `execute` envuelve cada comprobación con `dockerArgv`, y `validatePlan` rechaza los ejecutables sin imagen. La opción queda congelada en los límites de la misión. Detalle y garantías en `09` §1.
 - **Otras opciones:** `archimagoEffort` (`high`/`xhigh`), `allowedExecutables`, `autoApprovePlan` (desactivado por defecto) y `trustedTools`, las herramientas de recursos que no impiden la aprobación automática; por defecto Context7 y `WebSearch`.
 
@@ -213,4 +214,3 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 ## 11. Fuera de alcance en esta fase
 
 - Worktrees y Artífices en paralelo: solo se admite `isolation: none`, en secuencial.
-- Escriba con modelo.

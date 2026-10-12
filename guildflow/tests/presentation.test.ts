@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { agentSpawned, block, recover, startTask } from '../src/machine'
-import { actions, APPROVAL_MAX, approvalDialog, approvalText, chronicle, limitColor, liveAgents, personStatus, poseOf, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { actions, APPROVAL_MAX, withEscriba, approvalDialog, approvalText, chronicle, limitColor, liveAgents, personStatus, poseOf, stateLine, statusText, summaryMarkdown } from '../src/presentation'
 import { scene, type Pose, type Station } from '../src/sprites'
 import { transitionEvent, voice } from '../src/theme'
 import { agent, approved, LIMITS, ok, planned } from './fixtures'
@@ -133,5 +133,19 @@ describe('panel', () => {
     expect(limitColor(0.5)).toBe('#6fa8f5')
     expect(limitColor(0.7)).toBe('#e67e22')
     expect(limitColor(0.95)).toBe('#e74c3c')
+  })
+})
+
+describe('Escriba con modelo', () => {
+  test('el resumen va arriba, marcado como generado, y los datos de la crónica no cambian', () => {
+    const md = summaryMarkdown(approved(), ['run-1-unit.json'], 10)
+    const out = withEscriba(md, '# Título falso\nSe corrigió sum y pasan los tests.', 1234)
+    expect(out).toContain('## 🪶 Resumen del Escriba')
+    expect(out).toContain('Redactado por Haiku')
+    expect(out).toContain('1k tokens')
+    expect(out).not.toContain('# Título falso') // sin encabezados inyectados
+    expect(out.indexOf('Resumen del Escriba')).toBeLessThan(out.indexOf('- **Resultado:**'))
+    expect(out.replace(/\n## 🪶 Resumen del Escriba[\s\S]*?mandan los datos\._\n/, '')).toBe(md)
+    expect(withEscriba(md, '   ', 5)).toBe(md)
   })
 })

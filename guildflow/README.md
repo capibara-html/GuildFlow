@@ -63,6 +63,7 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `tokenBudgetPerQuest` · `costBudgetUsd` · `rateLimitPercent` · `wallClockMinutes` | 2M · 25 · 90 · 60 | El USD es equivalente a precio de API, no lo facturado |
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |
+| `escriba` | `none` | `haiku`: al cerrar, Haiku redacta un resumen breve en lenguaje llano al principio de la crónica, a partir de sus datos y sin herramientas. Cuesta una llamada pequeña por misión |
 | `theme` | `gremio` | Textos con temática de rol: cabecera temática + dato llano y voces de los roles. `sobrio` deja solo el dato |
 | `maestroEffort` | `medium` | Esfuerzo del Maestro mientras la misión trabaja (solo coordina). `inherit` usa el de la sesión. El de cada Artífice lo pone el plan por subtarea (`effort`) o, si falta, la complejidad del plan (`small` → `medium`, el resto → `high`); el Paladín revisa siempre en `high` |
 | `maestroModel` | `claude-sonnet-5-5` | Modelo del Maestro mientras la misión trabaja. Todo plan de más de una subtarea lo traza el Archimago (Opus). `inherit` usa el modelo que tengas en la sesión |

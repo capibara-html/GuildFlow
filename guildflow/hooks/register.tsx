@@ -8,7 +8,7 @@ import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { ARTIFICE_SYSTEM, decide, effortFor, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
-import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
+import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, ESCRIBA_SYSTEM, withEscriba, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
 import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
@@ -419,9 +419,17 @@ async function finalize($: $) {
     .sort()
     .slice(-50)
   const md = summaryMarkdown(q, runs, t, themeOf(OPTIONS))
-  await $.fs.write(`${q.project}/.guildflow/summary-${q.id}.md`, md)
+  const path = `${q.project}/.guildflow/summary-${q.id}.md`
+  await $.fs.write(path, md)
   const o = await mutate($, (x, now) => M.markLogged(x, now))
   if (o.ok) await note($, 'quest.summary', { path: `.guildflow/summary-${q.id}.md` })
+  // Escriba con modelo, opcional y después de cerrar: si falla o tarda, la crónica mecánica ya está escrita
+  if (OPTIONS.escriba !== 'haiku') return
+  const r = await $.model.complete({ model: 'claude-haiku-5-5', system: ESCRIBA_SYSTEM, prompt: md, maxTokens: 600, effort: 'low', timeoutMs: 20_000 }).catch(err => ({ isAnswered: false as const, reason: String(err).slice(0, 200) }))
+  if (!r.isAnswered) return void (await note($, 'escriba.failed', { reason: 'reason' in r ? String(r.reason) : '?' }))
+  const tokens = (r.usage.input_tokens ?? 0) + (r.usage.output_tokens ?? 0)
+  await $.fs.write(path, withEscriba(md, r.text, tokens))
+  await note($, 'escriba.done', { tokens })
 }
 
 /**
