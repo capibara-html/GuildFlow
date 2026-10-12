@@ -2,9 +2,13 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
 import { agentFinished, agentSpawned, benchConflict, integrate, nextStep, parallelCandidates, recover, spawnBlocker, startParallel, startTask, submitPlan } from '../src/machine'
+import { files } from '../src/persistence'
 import { decide } from '../src/policy'
+import { fingerprint } from '../src/verification'
 import { validatePlan } from '../src/validation'
 import { agent, approved, LIMITS, ok, RAW_PLAN, ROOT } from './fixtures'
+import { memIo } from './memio'
+import { world, type World } from './world'
 
 /** Plan con t1 y t2 independientes (rutas disjuntas), t3 que pisa las rutas de t1 y t4 visual. */
 function plan() {
@@ -112,5 +116,63 @@ describe('política del taller', () => {
     const free = { ...q, state: 'DISPATCH' as const, activeTask: null, progress: { ...q.progress, t1: { ...q.progress.t1!, status: 'done' as const } } }
     const r = startTask(free, 't3', 6)
     expect(r.ok ? '' : r.error).toContain('pisan el taller en marcha de t2')
+  })
+})
+
+describe('mod: taller de punta a punta', () => {
+  type R = { deny?: string; result?: unknown; text?: string }
+  const call = async ($: any, input: Record<string, unknown>) => (await $.tool.call(input)) as R
+  const saved = (w: World) => JSON.parse(w.files.get(files(ROOT).quest)!) as Quest
+  const two = (): Quest => ({ ...parallel(), rev: 2 })
+
+  test('abre el taller con la copia de sus rutas, lanza en segundo plano y solo deja escribir en el taller', async ($, on) => {
+    const w = world(on, { quest: two() })
+    w.files.set(`${ROOT}/src/other.js`, 'old')
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'start_parallel', taskId: 't2' })
+    expect(String(r.result)).toContain('run_in_background: true')
+    const dir = saved(w).benches!.t2!.dir
+    expect(w.files.get(`${ROOT}/${dir}/src/other.js`)).toBe('old')
+    const s = await $.agent.spawn({ prompt: 'hazlo', subagentType: 'guildflow:artifice' } as never)
+    expect(s.agentId).toBe('agent-1')
+    const sent = w.spawned[0] as { background: boolean; prompt: string }
+    expect(sent.background).toBe(true)
+    expect(sent.prompt).toContain(`TALLER (trabajas en paralelo): escribe SOLO dentro de ${ROOT}/${dir}/`)
+    expect((await call($, { tool: 'Write', file_path: `${ROOT}/${dir}/src/other.js`, content: 'new', agentId: 'agent-1' })).deny).toBeUndefined()
+    expect((await call($, { tool: 'Write', file_path: `${ROOT}/src/other.js`, content: 'x', agentId: 'agent-1' })).deny).toBeDefined()
+    expect((await call($, { tool: 'mcp__guildflow__run_check', check: 'unit', agentId: 'agent-1' })).deny).toContain('en paralelo no hay run_check')
+    expect(saved(w).filesWritten).toEqual([]) // lo del taller se registra al integrarlo
+  })
+
+  const queued = async (main: string) => {
+    const m = memIo({ [`${ROOT}/src/other.js`]: 'old' })
+    const seed = await fingerprint(m.io, ROOT, ['src/other.js'])
+    let q = ok(startParallel(two(), 't2', { dir: '.guildflow/wt/t2-1-x', seed }, 3))
+    q = ok(agentFinished(ok(agentSpawned(q, agent('a2', 'artifice', 't2'), 4)), 'a2', { reason: 'answer', partial: false }, 5))
+    return { quest: { ...q, rev: 5 }, files: { [`${ROOT}/src/other.js`]: main, [`${ROOT}/.guildflow/wt/t2-1-x/src/other.js`]: 'new' } }
+  }
+
+  test('con el carril libre, el taller listo se integra antes que una subtarea nueva y se verifica', async ($, on) => {
+    const { quest, files: f } = await queued('old')
+    const w = world(on, { quest })
+    for (const [k, v] of Object.entries(f)) w.files.set(k, v)
+    await call($, { tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' })
+    expect(w.files.get(`${ROOT}/src/other.js`)).toBe('new')
+    const q = saved(w)
+    expect(q.filesWritten).toContain(`${ROOT}/src/other.js`)
+    expect(q.benches).toEqual({})
+    expect(q.activeTask).toBe('t2') // entró en el carril principal: verificación y, si falla, corrección en serie
+    expect(w.runs.some(a => a.join(' ') === 'node --test test/')).toBe(true)
+  })
+
+  test('si el árbol principal cambió en sus rutas: conflicto, no se copia nada y la subtarea vuelve a la cola', async ($, on) => {
+    const { quest, files: f } = await queued('tocado por otro')
+    const w = world(on, { quest })
+    for (const [k, v] of Object.entries(f)) w.files.set(k, v)
+    const r = await call($, { tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' })
+    expect(w.files.get(`${ROOT}/src/other.js`)).toBe('tocado por otro')
+    const q = saved(w)
+    expect(q.progress.t2!.status).toBe('pending')
+    expect(q.progress.t2!.lastFailure).toContain('conflicto al integrar')
+    expect(String(r.result)).toContain('IMPLEMENTING') // y el carril principal sigue con t1
   })
 })

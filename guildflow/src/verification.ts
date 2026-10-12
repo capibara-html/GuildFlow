@@ -103,27 +103,49 @@ export async function realOf(io: Io, raw: string, cwd: string): Promise<string |
   return null
 }
 
+/** Archivos bajo una ruta del plan (archivo o directorio, hasta 300, sin enlaces ni node_modules): [ruta relativa, contenido | null si falta]. */
+async function filesUnder(io: Io, root: string, entry: string): Promise<[string, string | null][]> {
+  const e = parseEntry(entry)
+  if (typeof e === 'string') return []
+  const out: [string, string | null][] = []
+  const walk = async (path: string, depth: number) => {
+    if (out.length > 300 || depth > 8) return
+    const st = await io.stat(path, false).catch(() => undefined)
+    if (!st) return void out.push([path.slice(root.length + 1), null])
+    if (st.kind === 'dir') {
+      const list = await io.list(path)
+      for (const it of [...list].sort((a, b) => a.name.localeCompare(b.name))) if (!it.isLink && it.name !== 'node_modules') await walk(`${path}/${it.name}`, depth + 1)
+    } else if (st.kind === 'file') out.push([path.slice(root.length + 1), await io.read(path)])
+  }
+  await walk(`${root}/${e.rel}`, 0)
+  return out
+}
+
 /** Huella de las rutas protegidas (archivos o directorios, hasta 300 archivos): detecta cambios en los scripts de verificación. */
 export async function fingerprint(io: Io, root: string, protects: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   for (const p of protects) {
-    const e = parseEntry(p)
-    if (typeof e === 'string') continue
-    const abs = `${root}/${e.rel}`
-    const parts: string[] = []
-    const walk = async (path: string, depth: number) => {
-      if (parts.length > 300 || depth > 8) return
-      const st = await io.stat(path, false).catch(() => undefined)
-      if (!st) return void parts.push(`${path}:missing`)
-      if (st.kind === 'dir') {
-        const list = await io.list(path)
-        for (const it of [...list].sort((a, b) => a.name.localeCompare(b.name))) if (!it.isLink && it.name !== 'node_modules') await walk(`${path}/${it.name}`, depth + 1)
-      } else if (st.kind === 'file') parts.push(`${path.slice(root.length)}:${hash(await io.read(path))}`)
-    }
-    await walk(abs, 0)
-    out[p] = hash(parts.join('\n'))
+    const files = await filesUnder(io, root, p)
+    // mismo formato que antes de compartir el recorrido: las huellas guardadas en misiones en curso siguen valiendo
+    out[p] = hash(files.map(([rel, text]) => (text === null ? `${root}/${rel}:missing` : `/${rel}:${hash(text)}`)).join('\n'))
   }
   return out
+}
+
+/**
+ * Copia los archivos de unas rutas del plan de una raíz a otra (árbol principal → taller al abrirlo, taller →
+ * árbol principal al integrar). Devuelve las rutas relativas copiadas. ponytail: texto (io.read); un binario
+ * en las rutas de una subtarea en paralelo se corrompería: si hace falta, copiar con $.fs en bruto.
+ */
+export async function copyEntries(io: Io, from: string, to: string, paths: string[]): Promise<string[]> {
+  const copied: string[] = []
+  for (const p of paths)
+    for (const [rel, text] of await filesUnder(io, from, p)) {
+      if (text === null) continue
+      await io.write(`${to}/${rel}`, text)
+      copied.push(rel)
+    }
+  return copied
 }
 
 /** Rutas protegidas añadidas automáticamente: archivos citados en argv y manifiestos que definen scripts. */

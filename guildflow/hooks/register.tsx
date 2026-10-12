@@ -11,7 +11,7 @@ import { ARTIFICE_SYSTEM, decide, effortFor, effectivePreview, installCommand, m
 import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, ESCRIBA_SYSTEM, withEscriba, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
 import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
-import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
+import { autoProtects, copyEntries, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
 
 type Raw = Record<string, unknown>
 type $ = EngineInterface
@@ -248,7 +248,11 @@ function brief(q: Quest, role: Role): string {
       task.resources.tools.length || task.resources.skills.length
         ? `Recursos aprobados para esta subtarea (úsalos cuando aporten): ${[...task.resources.tools, ...task.resources.skills.map(x => `skill ${x}`)].join(', ')}`
         : '',
-      checks.length ? `Puedes comprobar tu trabajo con mcp__guildflow__run_check usando solo estos identificadores: ${checks.map(k => k.id).join(', ')}, diff-scope. No tienes shell.` : 'No tienes shell.',
+      q.benches?.[task.id]
+        ? `TALLER (trabajas en paralelo): escribe SOLO dentro de ${q.project}/${q.benches[task.id]!.dir}/, con la misma ruta relativa (por ejemplo ${q.benches[task.id]!.dir}/${task.paths[0]}); ahí está copiada la versión actual de tus rutas. Lee el resto del proyecto en su sitio. No tienes shell ni run_check: el mod copia tu taller al árbol principal y lo verifica al integrarlo.`
+        : checks.length
+          ? `Puedes comprobar tu trabajo con mcp__guildflow__run_check usando solo estos identificadores: ${checks.map(k => k.id).join(', ')}, diff-scope. No tienes shell.`
+          : 'No tienes shell.',
       prev.length ? `Fallos de la ronda anterior (cambia de estrategia si el fallo se repite):\n${prev.join('\n')}` : '',
       'Al terminar, responde SOLO con este informe compacto (el Maestro lo guarda en su contexto: sin prosa ni código):\nARCHIVOS: <rutas>\nCRITERIOS: <id> ✓|✗|? <motivo en pocas palabras>; …\nPENDIENTE: <ninguno | lo que falta>\nEl mod verificará por su cuenta; tus afirmaciones no cuentan como evidencia.',
     ]
@@ -433,6 +437,33 @@ async function finalize($: $) {
 }
 
 /**
+ * Con el carril principal libre, integra el primer taller listo: si sus rutas no cambiaron en el árbol principal
+ * desde que se abrió, copia el taller, registra las escrituras y lo verifica como una subtarea más. Si cambiaron,
+ * es un conflicto: no se copia nada y la subtarea vuelve a la cola (se reintentará en serie o en otro taller).
+ */
+async function integrateReady($: $) {
+  for (let i = 0; i < 10; i++) {
+    const q = QUEST
+    if (!q || q.state !== 'DISPATCH' || q.slot) return
+    const id = q.plan?.tasks.find(t => q.progress[t.id]?.status === 'queued')?.id
+    const b = id ? q.benches?.[id] : undefined
+    if (!id || !b) return
+    const task = q.plan!.tasks.find(t => t.id === id)!
+    const now = await fingerprint(io($), q.project, task.paths)
+    const changed = task.paths.filter(p => now[p] !== b.seed[p])
+    if (changed.length) {
+      await mutate($, (x, t) => M.benchConflict(x, id, `${changed.join(', ')} cambió en el árbol principal`, t))
+      continue
+    }
+    const copied = await copyEntries(io($), `${q.project}/${b.dir}`, q.project, task.paths)
+    if (copied.length) await mutate($, (x, t) => M.noteWrites(x, copied.map(r => `${q.project}/${r}`), t))
+    const o = await mutate($, (x, t) => M.integrate(x, id, t))
+    if (o.ok && QUEST?.state === 'VERIFYING') await verifyPending($)
+    return
+  }
+}
+
+/**
  * Envía un turno al Maestro ($.prompt.submit: corre cuando la sesión queda libre). Se registra el resultado,
  * porque un anfitrión puede no ejecutarlo o descartarlo; quien lo usa avisa a la persona de cómo seguir a mano.
  */
@@ -475,7 +506,7 @@ async function serveQuest($: $, e: Raw, caller: Caller): Promise<ToolCallResult>
 ${auto}`)
   const t = await $.clock.now()
   const action = e.action
-  const shape: Record<string, string[]> = { status: [], submit_plan: ['plan'], start_task: ['taskId'], start_review: [], verify: [], block: ['reason'] }
+  const shape: Record<string, string[]> = { status: [], submit_plan: ['plan'], start_task: ['taskId'], start_parallel: ['taskId'], start_review: [], verify: [], block: ['reason'] }
   if (typeof action !== 'string' || !shape[action]) return refuse(`acción desconocida; usa una de: ${Object.keys(shape).join(', ')}`)
   const bad = exactArgs(e, ['action', ...shape[action]])
   if (bad) return refuse(bad)
@@ -511,10 +542,31 @@ ${auto}`)
       const installs = QUEST && M.isApproved(QUEST) && QUEST.plan!.installs.length ? installSteps(QUEST.plan!) : undefined
       return res({ ok: true, warnings: v.warnings, protects: Object.fromEntries(v.plan.checks.map(k => [k.id, k.protects])), approval, ...(installs ? { installs } : {}), state: QUEST?.state, next: QUEST ? M.nextStep(QUEST) : null })
     }
+    case 'start_parallel': {
+      if (!isTaskId(e.taskId)) return refuse('taskId no válido')
+      const why = await breaker($)
+      if (why) return res({ ok: false, error: `misión detenida: ${why}` })
+      const id = e.taskId as string
+      if (!M.parallelCandidates(q).includes(id)) return res({ ok: false, error: `${id} no puede ir en paralelo ahora`, candidates: M.parallelCandidates(q), max: q.limits.maxParallelArtifices ?? 1 })
+      const task = q.plan!.tasks.find(x => x.id === id)!
+      // Carpeta única por apertura: nunca se reutiliza un taller con restos de otro intento
+      const dir = `.guildflow/wt/${id}-${M.progressOf(q, id).attempts + 1}-${t.toString(36)}`
+      const seed = await fingerprint(io($), q.project, task.paths)
+      await copyEntries(io($), q.project, `${q.project}/${dir}`, task.paths)
+      const o = await mutate($, (x, now) => M.startParallel(x, id, { dir, seed }, now))
+      if (!o.ok) return res({ ok: false, error: o.error })
+      return res({
+        ok: true,
+        state: o.quest.state,
+        launch: `Agent con subagent_type "${ROLES.artifice.type}", run_in_background: true y un mensaje breve. Trabaja en su taller ${dir} mientras sigues con el carril principal; al terminar, el mod lo integra cuando el carril principal quede libre`,
+        task: `${id} · ${task.title} · intento ${M.progressOf(o.quest, id).attempts}/${M.maxAttempts(o.quest, id)} · en paralelo`,
+      })
+    }
     case 'start_task': {
       if (!isTaskId(e.taskId)) return refuse('taskId no válido')
       const why = await breaker($)
       if (why) return res({ ok: false, error: `misión detenida: ${why}` })
+      await integrateReady($) // un taller listo entra antes que una subtarea nueva
       const o = await mutate($, (x, now) => M.startTask(x, e.taskId as string, now))
       if (!o.ok) return res({ ok: false, error: o.error })
       if (o.quest.state !== 'IMPLEMENTING') return res({ ok: false, state: o.quest.state, reason: o.quest.reason, next: M.nextStep(o.quest) })
@@ -548,6 +600,7 @@ async function serveRunCheck($: $, e: Raw, caller: Caller): Promise<ToolCallResu
   if (!M.isActive(q) || !M.isApproved(q)) return refuse('run_check solo ejecuta comprobaciones de un plan aprobado')
   const id = e.check
   if (id !== 'diff-scope' && !q.plan!.checks.some(k => k.id === id)) return refuse(`comprobación desconocida "${id}"; declaradas: ${['diff-scope', ...q.plan!.checks.map(k => k.id)].join(', ')}`)
+  if (caller.kind === 'agent' && M.benchOf(q, caller.agentId)) return refuse('en paralelo no hay run_check: el mod verifica tu taller al integrarlo')
   if (!q.activeTask) return refuse('no hay subtarea activa')
   const certifying = caller.kind === 'main' && q.state === 'VERIFYING' && M.pendingChecks(q).includes(id)
   const r = await runCheck($, id, certifying, caller.kind === 'main' ? 'maestro' : (caller.role ?? 'agente'))
@@ -855,13 +908,16 @@ export const register: Register = (on, options) => {
     if (why) return deny(why)
     const rule = ROLES[role]
     const extra = role === 'archimago' ? `\n${await catalog($)}` : ''
-    const subagentType = role === 'archimago' ? rule.type : await roleTypeFor($, QUEST!, role)
-    const model = modelFor(QUEST!, role, QUEST!.activeTask)
-    const started = await next({ ...e, subagentType, model, background: false, prompt: `${brief(QUEST!, role)}${extra}\n\n--- Mensaje del Maestro ---\n${e.prompt}` })
+    // Artífice en paralelo: se lanza en segundo plano con su subtarea como la activa (brief, recursos, modelo)
+    const par = role === 'artifice' && QUEST!.slot?.parallel ? QUEST!.slot.taskId : null
+    const v: Quest = par ? { ...QUEST!, activeTask: par } : QUEST!
+    const subagentType = role === 'archimago' ? rule.type : await roleTypeFor($, v, role)
+    const model = modelFor(v, role, v.activeTask)
+    const started = await next({ ...e, subagentType, model, background: par !== null, prompt: `${brief(v, role)}${extra}\n\n--- Mensaje del Maestro ---\n${e.prompt}` })
     await note($, 'agent.spawn.result', { role, requestedModel: e.model ?? null, model: started.model ?? null, agentId: started.agentId ?? null, deny: started.deny ?? null })
     if (!started.agentId) return started
     const t = await $.clock.now()
-    const rec = { id: started.agentId, role, taskId: role === 'archimago' ? null : QUEST!.activeTask, status: 'running' as const, model, effort: null, steps: 0, tokens: 0, costUsd: 0, startedAt: t, endedAt: null, partial: false, lastTool: null }
+    const rec = { id: started.agentId, role, taskId: role === 'archimago' ? null : (par ?? QUEST!.activeTask), status: 'running' as const, model, effort: null, steps: 0, tokens: 0, costUsd: 0, startedAt: t, endedAt: null, partial: false, lastTool: null }
     const o = await mutate($, (x, now) => M.agentSpawned(x, rec, now))
     if (!o.ok) await note($, 'agent.spawn.unregistered', { agentId: started.agentId, error: o.error }) // sus herramientas se rechazarán
     return started
@@ -969,6 +1025,7 @@ export const register: Register = (on, options) => {
       await mutate($, (x, t) => M.agentFinished(x, rec.id, { reason: e.reason, partial }, t))
       if (task && !wasDone && QUEST?.progress[task]?.status === 'done') await rebaseSpec($, task)
       if (QUEST?.state === 'VERIFYING') await verifyPending($)
+      await integrateReady($)
       if (QUEST?.state === 'DONE') await finalize($)
       return r
     }
@@ -1025,7 +1082,7 @@ export const register: Register = (on, options) => {
       if (a) a.lastTool = tool // solo para la banda; se persiste con el siguiente cambio
     }
     const ran = await next(e)
-    if (caller.kind === 'agent' && writes.length && !ran.deny && !ran.isError) await mutate($, (x, t) => M.noteWrites(x, writes as string[], t))
+    if (caller.kind === 'agent' && writes.length && !ran.deny && !ran.isError && !(QUEST && M.benchOf(QUEST, caller.agentId))) await mutate($, (x, t) => M.noteWrites(x, writes as string[], t))
     if (caller.kind === 'agent' && !ran.deny && !ran.isError && looked(tool, raw)) await mutate($, (x, t) => M.noteLook(x, caller.agentId, t))
     return ran
   }).catch(($, e, next) => {
