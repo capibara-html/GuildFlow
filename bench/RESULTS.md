@@ -43,3 +43,32 @@
    - informes compactos: el Maestro escribió solo 3k tokens de salida en toda la misión.
 
 **Límites del experimento:** es una sola ejecución por variante, con una tarea especificada de antemano y con tests. Con una petición ambigua o un repositorio grande, el resultado puede cambiar. Para afirmarlo con más fuerza harían falta varias ejecuciones y tareas de otro tipo.
+
+## Segunda ronda: A3, GuildFlow con ojos (2026-10-12)
+
+Después de A se añadieron al mod:
+- subtareas visuales con navegador local;
+- criterios visuales que exigen capturas;
+- Opus para el diseño;
+- una subtarea final de pulido.
+
+Se repitió A sobre otro clon (`chess-a3`).
+
+| | A (sin ojos) | **A3 (con ojos)** | B (tradicional) |
+|---|---|---|---|
+| Tests visibles / ocultos | 36/36 · 12/12 | **36/36 · 12/12** | 36/36 · 12/12 |
+| Calidad visual (valoración de la persona) | La peor | **La mejor** ("mucho mejor que B") | Buena |
+| Subtareas | 5 | 7 (con pulido visual) | — |
+| Coste (registro del mod; B: estimación) | $2,16 | $6,32 | ≈ $3,92 |
+| Tiempo | 11 min | ~57 min (bloqueo y reanudación incluidos) | 12 min |
+
+**Lectura.** Mirar el resultado es lo que eleva la estética: con los tests, A y A3 son iguales. El coste y el tiempo de A3 están inflados por fallos del entorno y del propio mod, no del trabajo:
+- **t6 necesitó 4 intentos:** el Paladín se quedaba sin peticiones haciendo capturas, y el puerto 8000 estaba ocupado por el servidor de otra sesión.
+- **Correcciones posteriores** (`a66a2f2` y la siguiente):
+  - más peticiones en las subtareas visuales;
+  - revisión repetida sin gastar intentos;
+  - puerto propio por misión;
+  - plan B de la vista previa;
+  - `NOT_RUN` por entorno.
+
+**Estimación, sin medir:** sin esos fallos, A3 rondaría $4–4,5 y 25–30 min. Hace falta una ejecución limpia (A4) para confirmarlo.

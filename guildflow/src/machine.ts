@@ -446,14 +446,18 @@ export const MAX_REVIEW_RETRIES = 2
 function settleReview(c: Quest, now: number, log: LogEntry[], partial = false) {
   const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
   const p = c.progress[task.id]
-  // Paladín cortado por su límite con criterios sin juzgar: no es un fallo del código. Se conserva lo ya juzgado
-  // y se abre otra revisión (acotada); solo si se agota se cuenta como ronda fallida.
-  const unjudged = task.criteria.filter(cr => (cr.check === 'review' || cr.check === 'visual') && !currentEvidence(p, cr.id))
+  // Revisión que no pudo hacerse: el Paladín se quedó sin peticiones (criterios sin juzgar) o declaró NOT_RUN
+  // (no pudo comprobarlo: vista previa caída, entorno). No es un fallo del código: se conserva lo ya juzgado y se
+  // abre otra revisión (acotada); solo si se agota, o si hay un FAIL/INCONCLUSIVE, cuenta como ronda fallida.
+  const reviewed = task.criteria.filter(cr => cr.check === 'review' || cr.check === 'visual')
+  const notRun = reviewed.filter(cr => currentEvidence(p, cr.id)?.verdict === 'NOT_RUN')
+  const unjudged = reviewed.filter(cr => !currentEvidence(p, cr.id))
   const judgedFail = task.criteria.some(cr => ['FAIL', 'INCONCLUSIVE'].includes(currentEvidence(p, cr.id)?.verdict ?? ''))
-  if (partial && unjudged.length && !judgedFail && (p.reviewRetries ?? 0) < MAX_REVIEW_RETRIES) {
+  if (((partial && unjudged.length) || notRun.length) && !judgedFail && (p.reviewRetries ?? 0) < MAX_REVIEW_RETRIES) {
     p.reviewRetries = (p.reviewRetries ?? 0) + 1
+    for (const cr of notRun) delete p.evidence[cr.id] // se vuelven a juzgar
     c.progressMark += 1
-    log.push({ ev: 'review.incomplete', data: { taskId: task.id, unjudged: unjudged.map(x => x.id), retry: p.reviewRetries } })
+    log.push({ ev: 'review.incomplete', data: { taskId: task.id, unjudged: [...unjudged, ...notRun].map(x => x.id), retry: p.reviewRetries, reason: notRun.length ? 'not_run' : 'turns' } })
     return
   }
   for (const cr of task.criteria) {

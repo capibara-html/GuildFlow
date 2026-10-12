@@ -339,3 +339,29 @@ describe('Maestro en Sonnet y planificación del Archimago', () => {
     expect(limitsFrom({ maestroModel: 'inherit' }).maestroModel).toBeNull()
   })
 })
+
+describe('/quest-resume como skill (arranca el turno del Maestro)', () => {
+  const blocked = () => ({ ...implementing(), state: 'BLOCKED' as const, pausedFrom: 'FIXING' as const, reason: 'mismo fallo', agents: [] })
+  test('confirmado en el diálogo: reanuda y deja pasar al prompt de la skill', async ($, on) => {
+    const w = world(on, { quest: blocked(), answers: ['Reanudar'] })
+    const passed: string[] = []
+    on('command.run', ($, e) => {
+      passed.push(e.command)
+      return {}
+    })
+    await $.command.run({ command: 'quest-resume', args: '' } as never)
+    expect(passed).toEqual(['quest-resume'])
+    expect(saved(w).state).toBe('FIXING')
+  })
+  test('cancelado o sin misión: responde el mod y no abre turno', async ($, on) => {
+    world(on, { quest: blocked(), answers: ['Cancelar'] })
+    const passed: string[] = []
+    on('command.run', ($, e) => {
+      passed.push(e.command)
+      return {}
+    })
+    const r = (await $.command.run({ command: 'guildflow:quest-resume', args: '' } as never)) as { text?: string }
+    expect(r.text).toContain('cancelada')
+    expect(passed).toEqual([])
+  })
+})

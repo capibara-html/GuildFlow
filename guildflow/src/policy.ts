@@ -3,7 +3,7 @@
 // docs/09-security-review.md y fijado por tests/policy.test.ts.
 import type { Effort, Quest, Role } from '../types'
 import { isApproved, isStopped, isWorking } from './machine'
-import { inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, sensitivePath, type PathEntry } from './validation'
+import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, sensitivePath, type PathEntry } from './validation'
 
 export const PLUGIN = 'guildflow'
 export const TOOL = {
@@ -96,6 +96,31 @@ export const VISUAL_EXTRA_TURNS = 25
 export function turnsFor(q: Quest, role: Role, taskId: string | null): number {
   const visual = q.plan?.tasks.find(t => t.id === taskId)?.visual === true
   return q.limits.maxTurns[role] + (visual && role !== 'archimago' ? VISUAL_EXTRA_TURNS : 0)
+}
+
+/**
+ * Vista previa efectiva de la misión: el mismo argv aprobado, pero en un puerto propio (8100–8999, derivado del id
+ * de la misión) para no chocar con servidores de otras sesiones sobre la misma carpeta. Solo se cambia el puerto
+ * si aparece en el argv (`8000` o `--port=8000`); si no, el servidor no se puede mover y se usa el del plan.
+ */
+export function effectivePreview(q: Quest): { argv: string[]; port: number } | null {
+  const pv = q.plan?.preview
+  if (!pv) return null
+  const port = 8100 + (parseInt(hash(q.id).slice(0, 8), 16) % 900)
+  let moved = false
+  const argv = pv.argv.map(a => {
+    if (a === String(pv.port)) {
+      moved = true
+      return String(port)
+    }
+    const m = /^(--?[a-z-]*port[a-z-]*=)(\d+)$/i.exec(a)
+    if (m && m[2] === String(pv.port)) {
+      moved = true
+      return `${m[1]}${port}`
+    }
+    return a
+  })
+  return moved ? { argv, port } : { argv: [...pv.argv], port: pv.port }
 }
 
 /** Modelo de un rol para una subtarea (el Artífice puede ir con Opus en subtareas creativas). */

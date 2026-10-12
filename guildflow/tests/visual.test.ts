@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
 import { agentBudget, agentFinished, agentSpawned, MAX_REVIEW_RETRIES, noteLook, recordVerdict, startReview, startTask } from '../src/machine'
-import { browserProblem, decide, modelFor, turnsFor, VISUAL_EXTRA_TURNS, VISUAL_TOOLS, type Facts } from '../src/policy'
+import { browserProblem, decide, effectivePreview, modelFor, turnsFor, VISUAL_EXTRA_TURNS, VISUAL_TOOLS, type Facts } from '../src/policy'
 import { approvalText } from '../src/presentation'
 import { validatePlan } from '../src/validation'
 import { agent, approved, LIMITS, ok, RAW_PLAN, ROOT } from './fixtures'
@@ -132,6 +132,33 @@ describe('criterios visuales: el Paladín tiene que mirar', () => {
   })
 })
 
+describe('entorno de la vista previa', () => {
+  test('puerto propio por misión (8100–8999), estable, también con --port=; si no está en el argv no se mueve', () => {
+    const q = approved(visualRaw())
+    const a = effectivePreview(q)!
+    expect(a.port).toBeGreaterThanOrEqual(8100)
+    expect(a.port).toBeLessThan(9000)
+    expect(effectivePreview(q)!.port).toBe(a.port)
+    expect(a.argv).toEqual(['python', '-m', 'http.server', String(a.port), '--bind', '127.0.0.1'])
+    expect(effectivePreview({ ...q, id: 'q-otra' })!.port).not.toBe(a.port)
+    const flag = approved(visualRaw({ preview: { argv: ['node', 'srv.js', '--port=8000', '--host=127.0.0.1'], port: 8000 } }))
+    expect(effectivePreview(flag)!.argv[2]).toBe(`--port=${effectivePreview(flag)!.port}`)
+    const fixed = approved(visualRaw({ preview: { argv: ['node', 'srv.js', '--host=127.0.0.1'], port: 8000 } }))
+    expect(effectivePreview(fixed)).toEqual({ argv: ['node', 'srv.js', '--host=127.0.0.1'], port: 8000 })
+  })
+  test('NOT_RUN del Paladín (no pudo comprobarlo) repite la revisión sin gastar intento; FAIL no', () => {
+    let q = reviewingVisual()
+    q = ok(noteLook(q, 'pal', 5))
+    q = ok(recordVerdict(q, { agentId: 'pal', criterionId: 'v1', verdict: 'NOT_RUN', evidence: 'vista previa caída: puerto ocupado' }, 5))
+    q = ok(recordVerdict(q, { agentId: 'pal', criterionId: 'c2', verdict: 'PASS', evidence: 'src/math.js:2' }, 5))
+    q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: false }, 6))
+    expect(q.state).toBe('REVIEWING')
+    expect(q.progress.t1.attempts).toBe(1)
+    expect(q.progress.t1.evidence.v1).toBeUndefined()
+    expect(q.progress.t1.evidence.c2.verdict).toBe('PASS')
+  })
+})
+
 describe('revisión visual que no cabe en un Paladín', () => {
   test('las subtareas visuales tienen más peticiones para mirar', () => {
     expect(turnsFor(approved(visualRaw()), 'paladin', 't1')).toBe(LIMITS.maxTurns.paladin + VISUAL_EXTRA_TURNS)
@@ -171,7 +198,8 @@ describe('integración: lanzamiento de una subtarea visual creativa', () => {
     await $.tool.call({ tool: 'mcp__guildflow__quest', action: 'start_task', taskId: 't1' } as never)
     const configs = JSON.parse(w.files.get(path)!).configurations as { name: string }[]
     expect(configs.map(c => c.name)).toEqual(['otra', 'guildflow-preview'])
-    expect(configs[1]).toEqual({ name: 'guildflow-preview', runtimeExecutable: 'python', runtimeArgs: ['-m', 'http.server', '8000', '--bind', '127.0.0.1'], port: 8000 })
+    const port = effectivePreview(q)!.port
+    expect(configs[1]).toEqual({ name: 'guildflow-preview', runtimeExecutable: 'python', runtimeArgs: ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], port })
     const r = await $.agent.spawn({ prompt: 'diseña', subagentType: 'guildflow:artifice' } as never)
     expect(r.agentId).toBeDefined()
     // Mismo turno que el registro: el motor aún no lanza la variante → Artífice base (que ya declara navegador), con Opus

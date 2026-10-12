@@ -31,6 +31,10 @@ Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `reso
 - Su Artífice y su Paladín se lanzan como variantes, cuando ya son lanzables, con las herramientas del navegador integrado (`VISUAL_TOOLS`: vista previa, navegar, capturas, leer la página; sin `javascript_tool` ni formularios). Toda URL, también dentro de los lotes, debe ser de la máquina local (`browserProblem`).
 - El mod escribe `.claude/launch.json` con el servidor `preview` del plan.
 - Los criterios `visual` solo admiten veredicto si el Paladín hizo capturas en esa revisión (`noteLook`, contadas por el mod en `tool.call`) y describe lo que vio.
+- **Entorno de la vista previa (misión A3).** El puerto 8000 del plan estaba ocupado por el servidor de otra sesión, y la vista previa no arrancaba.
+  - **Puerto propio:** cada misión usa uno entre 8100 y 8999, derivado de su id (`effectivePreview`).
+  - **Plan B:** el brief indica abrir `http://localhost:<puerto>` directamente si `preview_start` falla.
+  - **NOT_RUN no gasta intentos:** un `NOT_RUN` del Paladín (no pudo comprobarlo) repite la revisión como si se hubiera cortado, sin gastar intentos del Artífice.
 - **Lección en vivo (misión A3):** la revisión visual consume peticiones en capturas. Las subtareas visuales suman 25 peticiones al Artífice y al Paladín (`turnsFor`). Además, un Paladín cortado por su límite antes de juzgarlo todo ya no cuenta como fallo del código: se repite la revisión, conservando lo ya juzgado, hasta 2 veces (`review.incomplete`). El Paladín emite cada veredicto en cuanto lo tiene.
 - Una subtarea puede pedir `model: "opus"` para el trabajo creativo, y el Archimago cierra el trabajo visual con una subtarea de pulido. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
 
@@ -186,7 +190,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 | `/quest <petición>` (skill del plugin) | Abre una misión (archiva una detenida, bloqueada o en pausa), abre el panel y arranca el turno del Maestro |
 | `/quest-status` | Estado completo y abre el panel |
 | `/quest-halt` | Detiene la misión (`HALTED/user`) y aborta el turno del Maestro (`immediate`) |
-| `/quest-resume` | Reanuda tras confirmación humana en un diálogo |
+| `/quest-resume` (skill del plugin) | Reanuda tras confirmación humana en un diálogo y arranca el turno del Maestro; antes requería escribir "continua" |
 
 - **Línea de estado** (`$.ui.status`): siempre dice qué pasa, por ejemplo "⏳ trabajando · Artífice en t1 (intento 2)", "✅ completada…" o "⚠ bloqueada, necesita tu decisión…".
 - **Aviso y notificación** al pasar a `DONE`, `BLOCKED`, `HALTED`, `PAUSED` o `AWAITING_APPROVAL`.

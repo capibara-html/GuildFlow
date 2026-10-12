@@ -7,7 +7,7 @@ import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
-import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
+import { ARTIFICE_SYSTEM, decide, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
 import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
@@ -171,9 +171,12 @@ function looked(tool: string, raw: Record<string, unknown>): boolean {
 }
 
 /** Cómo ver la interfaz y qué exigir (solo subtareas visuales). */
-function visualBrief(role: 'artifice' | 'paladin'): string {
+function visualBrief(role: 'artifice' | 'paladin', q: Quest): string {
   const rubric = 'Rúbrica visual: legible y con buen contraste; escala entera y nítida (pixel art sin difuminar); estilo coherente entre tablero, piezas, menús y textos; elementos reconocibles a primera vista; nada desbordado ni cortado a 1280×800 y a 800×600; la interacción responde (clics, estados, animaciones).'
-  const how = `Para VER el resultado: mcp__Claude_Browser__preview_start {"name":"${PREVIEW_NAME}"} (servidor local del plan) y captura con mcp__Claude_Browser__computer {"action":"screenshot"}; cambia de tamaño con resize_window. El navegador solo abre la máquina local.`
+  const port = effectivePreview(q)?.port
+  const how =
+    `Para VER el resultado: mcp__Claude_Browser__preview_start {"name":"${PREVIEW_NAME}"} (servidor local de la misión${port ? `, puerto ${port}` : ''}) y captura con mcp__Claude_Browser__computer {"action":"screenshot"}; cambia de tamaño con resize_window. El navegador solo abre la máquina local.` +
+    (port ? `\nSi preview_start falla (puerto ocupado u otro error), no insistas: abre directamente http://localhost:${port}/ con mcp__Claude_Browser__navigate; si ahí no responde el proyecto, prueba UNA vez otro servidor local que ya lo sirva y, si tampoco, emite NOT_RUN indicando el fallo de entorno (no es un fallo del código).` : '')
   return role === 'artifice'
     ? `${how}\nItera: construye → mira → corrige hasta que cumpla. Lo que no se ve bien no está terminado aunque pasen los tests.\n${rubric}`
     : `${how}\nJuzga los criterios [visual] MIRANDO (el mod exige capturas tuyas): describe en la evidencia qué pantalla y tamaño viste y qué cumple o falla. Sé exigente.\n${rubric}`
@@ -200,7 +203,7 @@ function brief(q: Quest, role: Role): string {
       `Rutas protegidas (no las toques; definen cómo se te evalúa): ${prot.join(', ')}`,
       `Criterios de aceptación (congelados; no puedes cambiarlos):\n${criteria}`,
       `Termina cuando: ${task.doneWhen}`,
-      task.visual ? visualBrief('artifice') : '',
+      task.visual ? visualBrief('artifice', q) : '',
       task.resources.tools.length || task.resources.skills.length
         ? `Recursos aprobados para esta subtarea (úsalos cuando aporten): ${[...task.resources.tools, ...task.resources.skills.map(x => `skill ${x}`)].join(', ')}`
         : '',
@@ -222,7 +225,7 @@ function brief(q: Quest, role: Role): string {
     `Revisión independiente de la subtarea ${task.id}: ${task.title} (ronda ${p.round}). Rutas de la subtarea: ${task.paths.join(', ')}`,
     `Criterios:\n${criteria}`,
     `Resultados de las comprobaciones del mod en esta ronda:\n${auto.join('\n')}`,
-    task.visual ? visualBrief('paladin') : '',
+    task.visual ? visualBrief('paladin', q) : '',
     judgedBrief(q, task.id),
     'Emite cada veredicto EN CUANTO lo tengas (no al final): si te quedas sin peticiones, lo ya juzgado se conserva.',
     'Para CADA criterio [review] o [visual] llama a mcp__guildflow__submit_verdict con criterionId, verdict (PASS | FAIL | INCONCLUSIVE | NOT_RUN) y evidence con archivo:línea o un runId. PASS solo con evidencia suficiente; nunca por ausencia de errores visibles ni por lo que diga el Artífice. No puedes cambiar criterios. Puedes ejecutar run_check para obtener evidencia propia.',
@@ -561,7 +564,7 @@ async function prepareVariants($: $, q: Quest) {
 
 /** Configuración del navegador integrado para ver la interfaz: .claude/launch.json con el servidor del plan. */
 async function ensurePreview($: $, q: Quest): Promise<string | null> {
-  const pv = q.plan?.preview
+  const pv = effectivePreview(q)
   if (!pv) return null
   const path = `${q.project}/.claude/launch.json`
   let cfg: { version?: string; configurations?: { name: string }[] } = { version: '0.0.1', configurations: [] }
@@ -635,16 +638,24 @@ async function cmdHalt($: $): Promise<string> {
   return `Misión ${q.id} DETENIDA. No se lanzarán más agentes; ${running.length ? `los agentes en curso (${running.map(a => a.role).join(', ')}) verán rechazadas sus herramientas y terminarán` : 'no hay agentes en curso'}. El trabajo y el estado se conservan (.guildflow/). /quest-resume para reanudar o /quest para abrir otra.`
 }
 
-async function cmdResume($: $): Promise<string> {
+/**
+ * /quest-resume es la skill `quest-resume` del plugin (abre el turno del Maestro). Este hook va delante: confirma
+ * con la persona y reanuda; solo si la misión queda en marcha deja pasar al prompt.
+ */
+async function cmdResume($: $): Promise<{ ok: boolean; text: string }> {
+  const no = (text: string) => ({ ok: false, text })
   const q = await current($)
-  if (!M.isActive(q)) return 'No hay misión activa.'
-  if (q.state === 'AWAITING_APPROVAL') return askApproval($)
-  if (!M.isStopped(q)) return `La misión ${q.id} no está detenida (${q.state}). Siguiente: ${M.nextStep(q)}`
-  if (q.state === 'HALTED' && q.haltKind === 'safety') return `La misión ${q.id} se detuvo por seguridad (${q.reason}) y no se reanuda. Revisa .guildflow/log.jsonl y abre una misión nueva con /quest.`
+  if (!M.isActive(q)) return no('No hay misión activa.')
+  if (q.state === 'AWAITING_APPROVAL') {
+    const text = await askApproval($)
+    return { ok: QUEST?.state === 'DISPATCH', text }
+  }
+  if (!M.isStopped(q)) return { ok: true, text: `La misión ${q.id} no está detenida (${q.state}); el Maestro continúa. Siguiente: ${M.nextStep(q)}` }
+  if (q.state === 'HALTED' && q.haltKind === 'safety') return no(`La misión ${q.id} se detuvo por seguridad (${q.reason}) y no se reanuda. Revisa .guildflow/log.jsonl y abre una misión nueva con /quest.`)
   const fresh = limitsFrom(OPTIONS)
   const t = await $.clock.now()
   const breach = M.limitBreach({ ...q, limits: fresh }, t, fresh)
-  if (q.state === 'HALTED' && q.haltKind === 'limit' && breach) return `El límite sigue superado con la configuración actual: ${breach}. Ajusta el límite en la configuración del plugin y vuelve a intentarlo.`
+  if (q.state === 'HALTED' && q.haltKind === 'limit' && breach) return no(`El límite sigue superado con la configuración actual: ${breach}. Ajusta el límite en la configuración del plugin y vuelve a intentarlo.`)
   const lost = q.agents.filter(a => a.status === 'lost')
   const target = q.pausedFrom ?? 'PLANNING'
   const preview =
@@ -656,13 +667,12 @@ async function cmdResume($: $): Promise<string> {
   try {
     answer = await $.ui.ask(preview.slice(0, 1500), { options: ['Reanudar', 'Cancelar'], header: 'GuildFlow' })
   } catch {
-    return 'Reanudación cancelada (diálogo cerrado).'
+    return no('Reanudación cancelada (diálogo cerrado).')
   }
-  if (answer !== 'Reanudar') return 'Reanudación cancelada.'
+  if (answer !== 'Reanudar') return no('Reanudación cancelada.')
   const o = await mutate($, (x, now) => M.resume({ ...x, limits: fresh }, { by: 'human', breach }, now))
-  if (!o.ok) return `No se pudo reanudar: ${o.error}`
-  kick($, 'resume', { text: `${PREFIX}: la persona reanudó la misión ${q.id} (${o.quest.state}). Siguiente paso permitido: ${M.nextStep(o.quest)}.` })
-  return `Misión ${q.id} reanudada en ${o.quest.state}. Siguiente: ${M.nextStep(o.quest)}`
+  if (!o.ok) return no(`No se pudo reanudar: ${o.error}`)
+  return { ok: true, text: `Misión ${q.id} reanudada en ${o.quest.state}. El Maestro continúa. Siguiente: ${M.nextStep(o.quest)}` }
 }
 
 // ---------- registro de hooks ----------
@@ -707,7 +717,6 @@ export const register: Register = (on, options) => {
     })
     await $.command.register({ name: 'quest-status', description: 'GuildFlow: estado de la misión, agentes, consumo y siguiente paso' })
     await $.command.register({ name: 'quest-halt', description: 'GuildFlow: detiene la misión de forma controlada (conserva el trabajo)', immediate: true })
-    await $.command.register({ name: 'quest-resume', description: 'GuildFlow: reanuda una misión pausada o bloqueada tras revisar su estado' })
 
     try {
       const root = await rootOf($)
@@ -765,7 +774,14 @@ export const register: Register = (on, options) => {
     return { text: q ? statusText(q, await $.clock.now()) : 'Sin misión. /quest <petición> para abrir una.' }
   })
   on('command.run', { command: 'quest-halt' }, async $ => ({ text: await cmdHalt($) }))
-  on('command.run', { command: 'quest-resume' }, async $ => ({ text: await cmdResume($) }))
+  // /quest-resume, igual que /quest: skill del plugin con el mod delante (confirma y reanuda; solo entonces arranca el turno)
+  for (const command of ['quest-resume', `${PLUGIN}:quest-resume`])
+    on('command.run', { command }, async ($, e, next) => {
+      const r = await cmdResume($)
+      if (!r.ok) return { text: r.text }
+      $.ui.toast(`${PREFIX}: ${r.text}`)
+      return next(e)
+    })
 
   // ----- lanzamiento de agentes -----
   on('agent.spawn', async ($, e, next) => {
