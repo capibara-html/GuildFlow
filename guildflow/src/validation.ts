@@ -131,7 +131,35 @@ const SENSITIVE_PATHS: [RegExp, string][] = [
   [/(^|\/)(\.env[^/]*|secrets?|credentials?)(\/|$|\.)/i, 'secretos o entorno'],
   [/(^|\/)(\.gitattributes|\.gitmodules|\.husky|\.githooks|\.vscode|\.idea|\.devcontainer|\.envrc|\.pre-commit-config\.ya?ml|lefthook\.ya?ml|makefile|justfile|taskfile\.ya?ml)(\/|$)/i, 'configuración del repositorio, del editor o lanzadores'],
   [/(^|\/)(\.claude|\.mcp\.json|claude(\.local)?\.md|agents\.md|\.cursor|\.cursorrules|copilot-instructions\.md)(\/|$)/i, 'configuración o instrucciones de agentes'],
+  [/(^|\/)([^/]+\.config\.[cm]?[jt]s|\.[^/]+rc(\.[a-z]+)?|conftest\.py|setup\.py|manage\.py|build\.rs|gulpfile[^/]*|gruntfile[^/]*)$/i, 'configuración de herramientas que ejecutan código'],
 ]
+
+/** Extensiones de serie para la aprobación automática: código, tests, estilos y documentos. Sin configuración (json, yaml, toml). */
+export const DEFAULT_AUTO_EXTS = 'js,mjs,cjs,jsx,ts,mts,cts,tsx,py,go,rs,java,kt,cs,fs,rb,php,swift,c,h,cc,cpp,hpp,css,scss,html,vue,svelte,md,txt,svg'
+const autoExts = (raw: string) =>
+  raw
+    .split(',')
+    .map(x => x.trim().toLowerCase().replace(/^\./, ''))
+    .filter(x => /^[a-z0-9]{1,10}$/.test(x))
+export const AUTO_EXTS = autoExts(DEFAULT_AUTO_EXTS)
+
+/** Extensión de un archivo ("x.test.js" → "js"; ".gitignore" o "Makefile" → null). */
+const extOf = (rel: string) => {
+  const name = rel.split('/').pop() ?? ''
+  const m = /\.([a-z0-9]{1,10})$/i.exec(name)
+  return m && m.index > 0 ? m[1]!.toLowerCase() : null
+}
+
+/**
+ * Por qué un plan aprobado automáticamente NO puede escribir este archivo, o null. Dos capas: la extensión tiene
+ * que estar en la lista blanca, y el nombre no puede ser sensible (CLAUDE.md o setup.py tienen extensión permitida).
+ */
+export function autoUnwritable(rel: string, exts: readonly string[]): string | null {
+  const why = sensitivePath(rel)
+  if (why) return why
+  const ext = extOf(rel.replace(/\\/g, '/'))
+  return ext && exts.includes(ext) ? null : `${ext ? `extensión .${ext}` : 'archivo sin extensión'} fuera de autoApproveExtensions`
+}
 
 /** Motivo por el que escribir en una ruta relativa del proyecto es sensible, o null. */
 export function sensitivePath(rel: string): string | null {
@@ -140,13 +168,15 @@ export function sensitivePath(rel: string): string | null {
 }
 
 /** Motivos por los que un plan necesita aprobación humana aunque autoApprovePlan esté activado ([] = ninguno). */
-export function sensitivePlan(plan: Plan, trustedTools: readonly string[]): string[] {
+export function sensitivePlan(plan: Plan, trustedTools: readonly string[], exts: readonly string[] = AUTO_EXTS): string[] {
   const out: string[] = []
   if (plan.complexity === 'large') out.push('complejidad large')
   for (const i of plan.installs) out.push(i.kind === 'software' ? `requiere descargar ${i.name}` : `instala ${i.kind} ${i.name}`)
   for (const t of plan.tasks) for (const tool of t.resources.tools) if (!trustedTools.includes(tool)) out.push(`${t.id} usa ${tool} (no está en trustedTools)`)
+  // un directorio concedido se acota al escribir (cada archivo pasa por autoUnwritable); un archivo, ya aquí
   for (const t of plan.tasks) for (const p of t.paths) {
-    const why = sensitivePath(p)
+    const e = parseEntry(p)
+    const why = typeof e === 'string' ? e : e.dir ? sensitivePath(e.rel) : autoUnwritable(e.rel, exts)
     if (why) out.push(`${t.id} escribe en ${p} (${why})`)
   }
   return out
@@ -269,6 +299,7 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     allowedExecutables: exes,
     sandbox: options.sandbox === 'docker' ? imagesFrom(String(options.sandboxImages ?? DEFAULT_IMAGES)) : null,
     maestroModel,
+    autoApproveExtensions: autoExts(String(options.autoApproveExtensions ?? DEFAULT_AUTO_EXTS)),
     trustedTools: String(options.trustedTools ?? DEFAULT_TRUSTED)
       .split(',')
       .map(x => x.trim())

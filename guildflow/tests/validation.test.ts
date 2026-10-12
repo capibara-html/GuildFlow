@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_IMAGES, imagesFrom, limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
+import { autoUnwritable, DEFAULT_IMAGES, imagesFrom, limitsFrom, normalizeAbs, parseEntry, readOnlyShell, sensitiveCommand, sensitivePlan, validatePlan } from '../src/validation'
 import { LIMITS, RAW_PLAN } from './fixtures'
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -157,5 +157,14 @@ describe('planes sensibles (no se aprueban automáticamente)', () => {
       'CLAUDE.md', 'docs/AGENTS.md', 'pkg/.claude/', '.mcp.json', '.devcontainer/', '.envrc', 'Makefile', '.pre-commit-config.yaml', '.cursor/'])
       expect(sensitivePlan(plan([p]), []).length).toBe(1)
     expect(sensitivePlan(plan(['src/math.js'], 'large'), [])).toEqual(['complejidad large'])
+  })
+  test('lista blanca de extensiones: un archivo del plan fuera de ella pide a la persona; un directorio se acota al escribir', () => {
+    expect(sensitivePlan(plan(['src/app.ts', 'src/app.test.ts', 'lib/', 'README.md']), [])).toEqual([])
+    expect(sensitivePlan(plan(['config/data.json']), []).join()).toContain('extensión .json fuera de autoApproveExtensions')
+    expect(sensitivePlan(plan(['bin/run']), []).join()).toContain('archivo sin extensión')
+    expect(sensitivePlan(plan(['config/data.json']), [], ['js', 'json'])).toEqual([])
+    for (const p of ['vite.config.ts', 'web/eslint.config.mjs', '.eslintrc.js', 'tests/conftest.py']) expect(autoUnwritable(p, ['js', 'mjs', 'ts', 'py'])).toContain('herramientas')
+    expect(autoUnwritable('docs/CLAUDE.md', ['md'])).toContain('agentes') // extensión permitida, nombre sensible
+    expect(limitsFrom({ autoApproveExtensions: '.JSON, js, ../x, ' }).autoApproveExtensions).toEqual(['json', 'js'])
   })
 })

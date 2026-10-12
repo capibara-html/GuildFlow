@@ -323,7 +323,7 @@ async function baselineFor($: $, q: Quest): Promise<Baseline> {
 async function askApproval($: $): Promise<string> {
   const q = QUEST
   if (!q || q.state !== 'AWAITING_APPROVAL' || !q.plan) return 'No hay un plan pendiente de aprobación.'
-  const sensitive = sensitivePlan(q.plan, q.limits.trustedTools ?? [])
+  const sensitive = sensitivePlan(q.plan, q.limits.trustedTools ?? [], q.limits.autoApproveExtensions)
   if (OPTIONS.autoApprovePlan === true && !sensitive.length) {
     const baseline = await baselineFor($, q)
     const o = await mutate($, (x, t) => M.approve(x, { by: 'auto', answer: 'autoApprovePlan', baseline }, t))

@@ -132,4 +132,16 @@ describe('plan aprobado automáticamente', () => {
     for (const w of [`${ROOT}/pkg/package.json`, `${ROOT}/pkg/.env.local`, `${ROOT}/pkg/migrations/001.sql`])
       expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [w] })).kind).toBe('deny')
   })
+  test('lista blanca: dentro de su directorio, solo extensiones permitidas; la de la misión manda', () => {
+    const raw = JSON.parse(JSON.stringify(RAW_PLAN)) as typeof RAW_PLAN
+    raw.tasks[0]!.paths = ['pkg/']
+    const base = { gitRoot: null, head: null, dirty: [], protectedHashes: {} }
+    let q = ok(approve(planned(raw), { by: 'auto', answer: 'autoApprovePlan', baseline: base }, 2))
+    q = ok(agentSpawned(ok(startTask(q, 't1', 3)), agent('art', 'artifice', 't1'), 3))
+    const write = (x: typeof q, w: string) => decide(facts(x, { tool: 'Write', caller: asArt, writes: [`${ROOT}/pkg/${w}`] }))
+    for (const w of ['data.json', 'run', 'deploy.yml', 'vite.config.ts', '.eslintrc.js']) expect(write(q, w).kind).toBe('deny')
+    expect(write(q, 'a.test.ts').kind).toBe('allow')
+    expect(write({ ...q, limits: { ...q.limits, autoApproveExtensions: ['js', 'json'] } }, 'data.json').kind).toBe('allow')
+    expect(write({ ...q, approval: { ...q.approval!, by: 'human' } }, 'data.json').kind).toBe('allow') // con aprobación humana, la lista no aplica
+  })
 })

@@ -48,7 +48,7 @@ Por defecto sigue en `none`, porque exige tener Docker funcionando. Probado en v
 | `HEAD` movido tras la aprobación → FAIL | `diffScope` | `verification.test.ts` |
 | Plan congelado por hash; aprobación con `by` `human` o `auto` | `machine.ts` `approve`, `isApproved` | `machine.test.ts` |
 | Diálogo de aprobación completo o ninguno (≤ 3000 caracteres, sin recortes) | `approvalText` | `presentation.test.ts` |
-| Aprobación automática solo sin rutas sensibles, y el Artífice no escribe rutas sensibles en esas misiones | `sensitivePlan`, `sensitivePath`, `decide` paso 4 | `validation.test.ts`, `policy.test.ts`, `hooks.test.ts` |
+| Aprobación automática solo con extensiones de la lista blanca y nombres no sensibles (Fase 4), comprobado al aprobar y en cada escritura del Artífice | `sensitivePlan`, `autoUnwritable`, `decide` paso 4 | `validation.test.ts`, `policy.test.ts`, `hooks.test.ts` |
 | Comandos sensibles del Maestro → diálogo humano | `sensitiveCommand` | `policy.test.ts` |
 | Tachado de secretos con patrones conocidos en `runs/` y `log.jsonl` | `redact` | `persistence.test.ts` |
 | Separación entre proyectos (`$.store` por hash de raíz y comprobación de `project`) | `storeKey`, `loadQuest` | `persistence.test.ts` |

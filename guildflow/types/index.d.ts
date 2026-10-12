@@ -152,6 +152,8 @@ export type Limits = {
   sandbox?: Record<string, string> | null
   /** Herramientas de recursos que la persona confía para aprobar planes automáticamente (lista explícita). */
   trustedTools: string[]
+  /** Extensiones que puede escribir un plan aprobado automáticamente. Ausente en misiones antiguas (se usa la de serie). */
+  autoApproveExtensions?: string[]
   /** Modelo del Maestro mientras la misión trabaja; null = el que elija la persona en la sesión. */
   maestroModel: string | null
 }

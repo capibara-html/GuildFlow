@@ -74,7 +74,7 @@ Un mod desechable que responde a las incertidumbres de `02-architecture-decision
 ### Fase 4: Endurecimiento
 
 - ~~Sandbox opcional: ejecutar `run_check` dentro de un contenedor o máquina virtual configurable.~~ **Hecho (2026-10-12):** opción `sandbox: docker` (ver `09` §1 y `10` V21).
-- Lista blanca de extensiones de código para `autoApprovePlan`, en lugar de la lista negra de rutas sensibles.
+- ~~Lista blanca de extensiones de código para `autoApprovePlan`.~~ **Hecho (2026-10-12):** `autoApproveExtensions`, comprobada al aprobar y al escribir, más la lista negra de nombres sensibles.
 - Worktrees para Artífices en paralelo + integración en serie.
 - Escriba-LLM opcional (Haiku) para resúmenes.
 - Empaquetado como marketplace (`.claude-plugin/marketplace.json`) y guía de instalación.

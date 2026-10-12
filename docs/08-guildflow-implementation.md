@@ -85,7 +85,7 @@ Un solo hook decide toda llamada a herramienta: `decide()` en `src/policy.ts`, c
 1. **Nombre de herramienta válido.** Si no, se rechaza.
 2. **`SubagentHandback`** se permite siempre, porque los subagentes lo necesitan para entregar su informe.
 3. **Sin misión activa:** el Maestro y los agentes ajenos no cambian. Las herramientas propias las atiende el mod. Un rol del gremio se rechaza.
-4. **Subagente**, en este orden: rol conocido → lista blanca del rol → herramienta propia → estado de misión y plaza → lecturas dentro del proyecto → escrituras dentro de las rutas de la subtarea, fuera de las protegidas, dentro del límite de archivos y, si el plan se aprobó automáticamente, fuera de las rutas sensibles.
+4. **Subagente**, en este orden: rol conocido → lista blanca del rol → herramienta propia → estado de misión y plaza → lecturas dentro del proyecto → escrituras dentro de las rutas de la subtarea, fuera de las protegidas, dentro del límite de archivos y, si el plan se aprobó automáticamente, con una extensión de `autoApproveExtensions` y un nombre no sensible (`autoUnwritable`).
 5. **Maestro:**
    - Las herramientas propias las atiende el mod.
    - Si la misión no está trabajando (`isWorking` falso: detenida, bloqueada, en pausa, terminada o esperando aprobación), se permite todo. El Maestro vuelve a ser Claude Code normal.
@@ -117,7 +117,7 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
    - Una subtarea no puede tener concedidas las rutas que la certifican.
 4. **Aprobación:**
    - Por defecto, un diálogo `$.ui.ask` muestra el plan **completo**. Si no cabe en 3000 caracteres, el plan se rechaza: no se presenta recortado. Un "sí" en el chat no vale.
-   - Con `autoApprovePlan` activado, el mod aprueba solo planes sin rutas sensibles (`sensitivePlan`) y de complejidad distinta de `large`. La aprobación queda registrada como `by: 'auto'`.
+   - Con `autoApprovePlan` activado, el mod aprueba solo planes de complejidad distinta de `large` cuyas rutas pasan `sensitivePlan`. Fase 4: dos capas. Primero, una **lista blanca de extensiones** (`autoApproveExtensions`; sin `json`, `yaml`, `toml` ni archivos sin extensión). Después, la lista negra de nombres sensibles, que se mantiene porque `CLAUDE.md` o `setup.py` tienen extensión permitida. Un archivo del plan se comprueba al aprobar; un directorio, archivo a archivo al escribir. La aprobación queda registrada como `by: 'auto'`.
    - Al aprobar se toma la línea base: `HEAD`, archivos ya sucios y huellas de las rutas protegidas.
 5. **Instalaciones de terceros** (`plan.installs`). Siempre exigen aprobación humana.
    - **`plugin`, `mcp`, `skill`:** `argv` exacto de `claude mcp add|add-json` o `claude plugin install|marketplace add`, sin shell. Tras la aprobación, el Maestro las ejecuta tal cual y la guarda las permite sin otro diálogo.

@@ -3,7 +3,7 @@
 // docs/09-security-review.md y fijado por tests/policy.test.ts.
 import type { Effort, Quest, Role } from '../types'
 import { isApproved, isStopped, isWorking } from './machine'
-import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, sensitivePath, type PathEntry } from './validation'
+import { hash, inside, matchesEntry, parseEntry, readOnlyShell, sensitiveCommand, autoUnwritable, AUTO_EXTS, type PathEntry } from './validation'
 
 export const PLUGIN = 'guildflow'
 export const TOOL = {
@@ -296,8 +296,8 @@ export function decide(f: Facts): Decision {
           return deny('4-write', `ruta protegida (estado del gremio o definición de una comprobación): ${w.slice(f.root.length + 1)}`)
         const entries = task.paths.map(p => parseEntry(p) as PathEntry)
         if (!entries.some(e => matchesEntry(w, f.root, e))) return deny('4-write', `${task.id} solo puede escribir en ${task.paths.join(', ')}; rechazado: ${w.slice(f.root.length + 1)}`)
-        const why = q.approval?.by === 'auto' ? sensitivePath(w.slice(f.root.length + 1)) : null
-        if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(f.root.length + 1)} es sensible (${why}) y necesita un plan aprobado por la persona`)
+        const why = q.approval?.by === 'auto' ? autoUnwritable(w.slice(f.root.length + 1), q.limits.autoApproveExtensions ?? AUTO_EXTS) : null
+        if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(f.root.length + 1)} no se puede escribir (${why}); necesita un plan aprobado por la persona`)
         if (!q.filesWritten.includes(w)) fresh += 1
       }
       if (q.filesWritten.length + fresh > q.limits.maxFilesChanged) return deny('4-limit', `límite de ${q.limits.maxFilesChanged} archivos modificados por misión`)

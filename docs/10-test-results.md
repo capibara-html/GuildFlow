@@ -17,7 +17,7 @@
 
 ## 2. Pruebas automáticas: `claude plugin test guildflow`
 
-Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **187 pass, 0 fail** (125 de la Fase 2 + 41 de la Fase 2.5 + 7 de la capa temática de la Fase 3 + 6 del sandbox Docker de la Fase 4 en `verification.test.ts` y `validation.test.ts` + 8 del tablón: poses, escena SVG, bitácora, acciones y colores en `presentation.test.ts`, y el panel montado en Desktop y en terminal con Detener y Reanudar en `hooks.test.ts`; 19 en `visual.test.ts`, 2 de `/quest-resume` como skill, 12 en `autonomy.test.ts` y 8 de integración en `hooks.test.ts`: arranque de `/quest`, `Glob` absoluto dentro del proyecto, `start_task` sin brief, Archimago obligatorio con más de una subtarea, Maestro en Sonnet y `maestroModel`).
+Se ejecutan contra el motor real del kit de pruebas, no contra simulaciones propias del motor. **189 pass, 0 fail** (125 de la Fase 2 + 41 de la Fase 2.5 + 7 de la capa temática de la Fase 3 + 6 del sandbox Docker y 2 de la lista blanca de la aprobación automática de la Fase 4, en `verification`, `validation` y `policy.test.ts` + 8 del tablón: poses, escena SVG, bitácora, acciones y colores en `presentation.test.ts`, y el panel montado en Desktop y en terminal con Detener y Reanudar en `hooks.test.ts`; 19 en `visual.test.ts`, 2 de `/quest-resume` como skill, 12 en `autonomy.test.ts` y 8 de integración en `hooks.test.ts`: arranque de `/quest`, `Glob` absoluto dentro del proyecto, `start_task` sin brief, Archimago obligatorio con más de una subtarea, Maestro en Sonnet y `maestroModel`).
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
