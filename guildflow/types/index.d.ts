@@ -97,6 +97,8 @@ export type TaskProgress = {
   noProgress: number
   lastFailure: string | null
   bonusAttempts: number
+  /** Revisiones repetidas porque el Paladín se quedó sin peticiones antes de juzgar todo (no son fallos del código). */
+  reviewRetries?: number
 }
 
 export type AgentStatus = 'running' | 'done' | 'aborted' | 'error' | 'lost'

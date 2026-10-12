@@ -2,8 +2,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
-import { agentSpawned, noteLook, recordVerdict, startReview, startTask } from '../src/machine'
-import { browserProblem, decide, modelFor, VISUAL_TOOLS, type Facts } from '../src/policy'
+import { agentBudget, agentFinished, agentSpawned, MAX_REVIEW_RETRIES, noteLook, recordVerdict, startReview, startTask } from '../src/machine'
+import { browserProblem, decide, modelFor, turnsFor, VISUAL_EXTRA_TURNS, VISUAL_TOOLS, type Facts } from '../src/policy'
 import { approvalText } from '../src/presentation'
 import { validatePlan } from '../src/validation'
 import { agent, approved, LIMITS, ok, RAW_PLAN, ROOT } from './fixtures'
@@ -129,6 +129,36 @@ describe('criterios visuales: el Paladín tiene que mirar', () => {
     const short = recordVerdict(looked, { agentId: 'pal', criterionId: 'v1', verdict: 'PASS', evidence: 'ok' }, 6)
     expect(!short.ok && short.error).toContain('describe lo que viste')
     expect(recordVerdict(looked, { agentId: 'pal', criterionId: 'v1', verdict: 'PASS', evidence: seen }, 6).ok).toBe(true)
+  })
+})
+
+describe('revisión visual que no cabe en un Paladín', () => {
+  test('las subtareas visuales tienen más peticiones para mirar', () => {
+    expect(turnsFor(approved(visualRaw()), 'paladin', 't1')).toBe(LIMITS.maxTurns.paladin + VISUAL_EXTRA_TURNS)
+    expect(turnsFor(approved(), 'paladin', 't1')).toBe(LIMITS.maxTurns.paladin)
+  })
+  test('Paladín cortado sin juzgar todo: se repite la revisión (no gasta intento ni cuenta como fallo); conserva lo juzgado', () => {
+    let q = reviewingVisual()
+    q = ok(noteLook(q, 'pal', 5))
+    q = ok(recordVerdict(q, { agentId: 'pal', criterionId: 'c2', verdict: 'PASS', evidence: 'src/math.js:2' }, 5))
+    const budget = agentBudget(q)
+    q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: true }, 6))
+    expect(q.state).toBe('REVIEWING')
+    expect(q.progress.t1.reviewRetries).toBe(1)
+    expect(q.progress.t1.attempts).toBe(1)
+    expect(q.progress.t1.evidence.c2.verdict).toBe('PASS')
+    expect(agentBudget(q)).toBe(budget + 1)
+    expect(ok(startReview(q, 7)).slot?.role).toBe('paladin')
+  })
+  test('agotadas las repeticiones, o con un FAIL ya emitido, cuenta como ronda fallida', () => {
+    let q = reviewingVisual()
+    q.progress.t1.reviewRetries = MAX_REVIEW_RETRIES
+    q = ok(agentFinished(q, 'pal', { reason: 'answer', partial: true }, 6))
+    expect(q.state).not.toBe('REVIEWING')
+    let r = reviewingVisual()
+    r = ok(recordVerdict(r, { agentId: 'pal', criterionId: 'c2', verdict: 'FAIL', evidence: 'src/math.js:2' }, 5))
+    r = ok(agentFinished(r, 'pal', { reason: 'answer', partial: true }, 6))
+    expect(r.state).not.toBe('REVIEWING')
   })
 })
 

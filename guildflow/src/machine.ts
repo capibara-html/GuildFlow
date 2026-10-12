@@ -232,7 +232,7 @@ export function agentBudget(q: Quest): number {
   const ceiling = q.limits.maxAgentsPerQuest
   if (!q.plan) return ceiling
   const planners = q.agents.filter(a => a.role === 'archimago').length
-  const perTasks = q.plan.tasks.reduce((n, t) => n + maxAttempts(q, t.id) * 2, 0)
+  const perTasks = q.plan.tasks.reduce((n, t) => n + maxAttempts(q, t.id) * 2 + (q.progress[t.id]?.reviewRetries ?? 0), 0)
   return Math.min(ceiling, planners + perTasks)
 }
 
@@ -355,7 +355,7 @@ export function agentFinished(q: Quest, agentId: string, a: { reason: string; pa
       c.progress[rec.taskId!].status = 'verifying'
       go(c, 'VERIFYING', now, log)
     } else if (rec.role === 'paladin' && c.state === 'REVIEWING') {
-      settleReview(c, now, log)
+      settleReview(c, now, log, a.partial)
     }
   })
 }
@@ -440,9 +440,22 @@ export function recordVerdict(q: Quest, a: { agentId: string; criterionId: strin
   })
 }
 
-function settleReview(c: Quest, now: number, log: LogEntry[]) {
+/** Revisiones que se repiten por subtarea y ronda si el Paladín se queda sin peticiones antes de juzgar todo. */
+export const MAX_REVIEW_RETRIES = 2
+
+function settleReview(c: Quest, now: number, log: LogEntry[], partial = false) {
   const task = c.plan!.tasks.find(t => t.id === c.activeTask)!
   const p = c.progress[task.id]
+  // Paladín cortado por su límite con criterios sin juzgar: no es un fallo del código. Se conserva lo ya juzgado
+  // y se abre otra revisión (acotada); solo si se agota se cuenta como ronda fallida.
+  const unjudged = task.criteria.filter(cr => (cr.check === 'review' || cr.check === 'visual') && !currentEvidence(p, cr.id))
+  const judgedFail = task.criteria.some(cr => ['FAIL', 'INCONCLUSIVE'].includes(currentEvidence(p, cr.id)?.verdict ?? ''))
+  if (partial && unjudged.length && !judgedFail && (p.reviewRetries ?? 0) < MAX_REVIEW_RETRIES) {
+    p.reviewRetries = (p.reviewRetries ?? 0) + 1
+    c.progressMark += 1
+    log.push({ ev: 'review.incomplete', data: { taskId: task.id, unjudged: unjudged.map(x => x.id), retry: p.reviewRetries } })
+    return
+  }
   for (const cr of task.criteria) {
     if (!currentEvidence(p, cr.id)) p.evidence[cr.id] = { verdict: 'NOT_RUN', source: 'mod', detail: 'sin veredicto en esta ronda', runId: null, round: p.round, at: now }
   }

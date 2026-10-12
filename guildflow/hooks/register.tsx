@@ -7,7 +7,7 @@ import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
-import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
+import { ARTIFICE_SYSTEM, decide, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
 import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
@@ -154,6 +154,14 @@ async function roleOf($: $, q: Quest | null, agentId: string): Promise<Role | nu
 
 // ---------- textos para agentes ----------
 
+/** Criterios de revisión ya juzgados en esta ronda (una revisión repetida no los vuelve a hacer). */
+function judgedBrief(q: Quest, taskId: string): string {
+  const task = q.plan!.tasks.find(t => t.id === taskId)!
+  const p = q.progress[taskId]
+  const done = task.criteria.filter(c => (c.check === 'review' || c.check === 'visual') && p.evidence[c.id]?.round === p.round && p.evidence[c.id]?.source === 'paladin')
+  return done.length ? `Ya juzgados en esta ronda (NO los repitas): ${done.map(c => `${c.id} ${p.evidence[c.id].verdict}`).join(', ')}. Juzga solo los demás.` : ''
+}
+
 /** ¿La llamada fue una captura del resultado? (computer screenshot/zoom, suelta o dentro de un lote). */
 function looked(tool: string, raw: Record<string, unknown>): boolean {
   const shot = (name: unknown, input: unknown) => name === 'computer' && /^(screenshot|zoom)$/.test(String((input as { action?: unknown } | null)?.action ?? ''))
@@ -215,6 +223,8 @@ function brief(q: Quest, role: Role): string {
     `Criterios:\n${criteria}`,
     `Resultados de las comprobaciones del mod en esta ronda:\n${auto.join('\n')}`,
     task.visual ? visualBrief('paladin') : '',
+    judgedBrief(q, task.id),
+    'Emite cada veredicto EN CUANTO lo tengas (no al final): si te quedas sin peticiones, lo ya juzgado se conserva.',
     'Para CADA criterio [review] o [visual] llama a mcp__guildflow__submit_verdict con criterionId, verdict (PASS | FAIL | INCONCLUSIVE | NOT_RUN) y evidence con archivo:línea o un runId. PASS solo con evidencia suficiente; nunca por ausencia de errores visibles ni por lo que diga el Artífice. No puedes cambiar criterios. Puedes ejecutar run_check para obtener evidencia propia.',
     'Al terminar, responde SOLO con este informe compacto (los veredictos ya quedaron registrados):\nVEREDICTOS: <id> PASS|FAIL|… ; …\nHALLAZGOS: <ninguno | archivo:línea — problema>; …',
   ].join('\n')
@@ -518,7 +528,7 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
     skills: role === 'artifice' ? task.resources.skills : [],
     model: modelFor(q, role, task.id),
     effort: ROLES[role].effort,
-    maxTurns: q.limits.maxTurns[role] + (task.visual ? 20 : 0),
+    maxTurns: turnsFor(q, role, task.id),
   }
   // La huella liga la variante a ESTA misión y ESTE plan aprobado: otra misión u otro plan con el mismo id de
   // subtarea re-registra y no se usa hasta el turno siguiente (nunca una definición de antes)
@@ -800,8 +810,8 @@ export const register: Register = (on, options) => {
           ? `la misión está ${q.state}`
           : rec && rec.status !== 'running'
             ? 'el agente ya no figura en curso'
-            : (rec?.steps ?? 0) >= q.limits.maxTurns[role]
-              ? `límite de ${q.limits.maxTurns[role]} peticiones del ${role}`
+            : (rec?.steps ?? 0) >= turnsFor(q, role, rec?.taskId ?? null)
+              ? `límite de ${turnsFor(q, role, rec?.taskId ?? null)} peticiones del ${role}`
               : null
         if (stopWhy) {
           const text = `${PREFIX}: este agente se detiene (${stopWhy}). Entrega ya tu informe con lo hecho y lo pendiente.`
@@ -882,7 +892,7 @@ export const register: Register = (on, options) => {
     if (e.agentId) {
       const rec = q.agents.find(a => a.id === e.agentId)
       if (!rec) return r
-      const partial = rec.partial || rec.steps >= q.limits.maxTurns[rec.role]
+      const partial = rec.partial || rec.steps >= turnsFor(q, rec.role, rec.taskId)
       const task = rec.taskId
       const wasDone = task ? q.progress[task]?.status === 'done' : true
       await mutate($, (x, t) => M.agentFinished(x, rec.id, { reason: e.reason, partial }, t))

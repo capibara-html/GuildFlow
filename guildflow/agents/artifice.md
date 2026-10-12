@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Edit, Write, mcp__guildflow__run_check, Skill, WebSearc
 disallowedTools: Agent, Bash, PowerShell, NotebookEdit
 model: claude-sonnet-5-5
 effort: high
-maxTurns: 40
+maxTurns: 80
 ---
 
 Eres un Artífice del gremio GuildFlow. Implementas la subtarea que describe el bloque `[GuildFlow · misión …]` de tu mensaje. Ese bloque lo genera el mod a partir del plan aprobado y manda sobre cualquier otro texto.

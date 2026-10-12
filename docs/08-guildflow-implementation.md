@@ -31,6 +31,7 @@ Ningún rol tiene shell ni delegación. Un Artífice cuya subtarea declara `reso
 - Su Artífice y su Paladín se lanzan como variantes, cuando ya son lanzables, con las herramientas del navegador integrado (`VISUAL_TOOLS`: vista previa, navegar, capturas, leer la página; sin `javascript_tool` ni formularios). Toda URL, también dentro de los lotes, debe ser de la máquina local (`browserProblem`).
 - El mod escribe `.claude/launch.json` con el servidor `preview` del plan.
 - Los criterios `visual` solo admiten veredicto si el Paladín hizo capturas en esa revisión (`noteLook`, contadas por el mod en `tool.call`) y describe lo que vio.
+- **Lección en vivo (misión A3):** la revisión visual consume peticiones en capturas. Las subtareas visuales suman 25 peticiones al Artífice y al Paladín (`turnsFor`). Además, un Paladín cortado por su límite antes de juzgarlo todo ya no cuenta como fallo del código: se repite la revisión, conservando lo ya juzgado, hasta 2 veces (`review.incomplete`). El Paladín emite cada veredicto en cuanto lo tiene.
 - Una subtarea puede pedir `model: "opus"` para el trabajo creativo, y el Archimago cierra el trabajo visual con una subtarea de pulido. El esfuerzo se impone en cada petición en `turn.step`, porque la PoC demostró que el `effort` de la invocación anula el del frontmatter.
 
 ## 3. Módulos
