@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { agentSpawned, block, recover, startTask } from '../src/machine'
-import { APPROVAL_MAX, approvalText, liveAgents, stateLine, statusText } from '../src/presentation'
+import { APPROVAL_MAX, approvalDialog, approvalText, liveAgents, personStatus, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { transitionEvent, voice } from '../src/theme'
 import { agent, approved, LIMITS, ok, planned } from './fixtures'
 
 describe('diálogo de aprobación', () => {
@@ -31,12 +32,56 @@ describe('estado mostrado', () => {
   })
   test('línea de estado: dice si trabaja, si terminó o si necesita a la persona', () => {
     let q = ok(startTask(approved(), 't1', 3))
-    expect(stateLine(q)).toContain('trabajando · Artífice en t1')
+    expect(stateLine(q, 'sobrio')).toContain('trabajando · Artífice en t1')
+    expect(stateLine(q)).toContain('⚒️ La forja trabaja · Artífice en t1 «Corregir sum» (intento 1/3)')
     q = ok(block(q, 'el mismo fallo se repitió', 4))
-    expect(stateLine(q)).toContain('necesita tu decisión · el mismo fallo se repitió')
-    expect(stateLine({ ...q, state: 'LOGGED' })).toContain('completada')
+    expect(stateLine(q, 'sobrio')).toContain('necesita tu decisión · el mismo fallo se repitió')
+    expect(stateLine(q)).toContain('⚔️ Encrucijada — necesita tu decisión · el mismo fallo se repitió')
+    expect(stateLine({ ...q, state: 'LOGGED' }, 'sobrio')).toContain('completada')
+    expect(stateLine({ ...q, state: 'LOGGED' })).toContain('🏆 Misión cumplida')
   })
   test('el progreso sale de la evidencia, no de estimaciones', () => {
     expect(statusText(approved(), 5)).toContain('criterios 0/3')
+  })
+})
+
+describe('capa temática', () => {
+  test('voces: estables por misión y evento, vacías con el tema sobrio', () => {
+    expect(voice('gremio', 'review.fail', 'q-1')).toBe(voice('gremio', 'review.fail', 'q-1'))
+    expect(voice('gremio', 'review.fail', 'q-1')).toMatch(/^«.+» — el Paladín$/)
+    expect(voice('sobrio', 'review.fail', 'q-1')).toBe('')
+    expect(voice('gremio', 'inexistente', 'q-1')).toBe('')
+  })
+  test('cambios de estado que merecen aviso y con qué voz', () => {
+    expect(transitionEvent('IMPLEMENTING', 'VERIFYING')).toBe('task.delivered')
+    expect(transitionEvent('REVIEWING', 'FIXING')).toBe('review.fail')
+    expect(transitionEvent('FIXING', 'BLOCKED')).toBe('blocked')
+    expect(transitionEvent('DONE', 'LOGGED')).toBeNull()
+    expect(transitionEvent('DISPATCH', 'IMPLEMENTING')).toBeNull()
+  })
+  test('crónica temática con los datos intactos; sobrio igual que antes', () => {
+    const q = approved()
+    const g = summaryMarkdown(q, ['run-1-unit.json'], 10)
+    expect(g).toContain('# 📜 Crónica de la misión q-test')
+    expect(g).toContain('— el Escriba')
+    expect(g).toContain('## ⚒️ Encargos (subtareas)')
+    expect(g).toContain('run-1-unit.json')
+    const plain = summaryMarkdown(q, ['run-1-unit.json'], 10, 'sobrio')
+    expect(plain).toContain('# Misión q-test')
+    expect(plain).not.toContain('Crónica')
+  })
+  test('el diálogo temático no recorta el plan: contiene el texto llano entero', () => {
+    const q = planned()
+    const plain = approvalText(q.id, q.plan!, LIMITS)!
+    const d = approvalDialog('gremio', q, plain)
+    expect(d).toContain(plain.replace(/¿Apruebas el plan\?$/, ''))
+    expect(d).toContain('Sellar el pergamino')
+    expect(approvalDialog('sobrio', q, plain)).toBe(plain)
+  })
+  test('/quest-status para la persona: cabecera temática + el mismo estado llano que lee el Maestro', () => {
+    const q = approved()
+    expect(personStatus('gremio', q, 5)).toContain(statusText(q, 5))
+    expect(personStatus('gremio', q, 5).split('\n')[0]).toContain('🏛️')
+    expect(personStatus('sobrio', q, 5)).toBe(statusText(q, 5))
   })
 })

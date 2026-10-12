@@ -8,7 +8,8 @@ import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
 import { ARTIFICE_SYSTEM, decide, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
-import { APPROVAL_MAX, approvalText, band, pane, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { APPROVAL_MAX, approvalDialog, approvalText, band, pane, personStatus, stateLine, statusText, summaryMarkdown } from '../src/presentation'
+import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
 import { autoProtects, diffScope, execute, fingerprint, gitArgv, parsePorcelain, realOf } from '../src/verification'
 
@@ -64,13 +65,19 @@ async function setView($: $) {
   const state = snap?.state ?? null
   if (state === shownState) return
   const first = shownState === undefined
+  const prev = shownState ?? null
   shownState = state
-  $.ui.status(snap ? stateLine(snap) : undefined)
+  const th = themeOf(OPTIONS)
+  $.ui.status(snap ? stateLine(snap, th) : undefined)
   if (first || !snap) return
-  if (['DONE', 'BLOCKED', 'HALTED', 'PAUSED', 'AWAITING_APPROVAL'].includes(snap.state)) {
-    $.ui.toast(stateLine(snap), { timeoutMs: 10_000 })
-    void $.ui.notify(stateLine(snap), { title: 'GuildFlow' }).catch(() => undefined)
-  }
+  // Aviso de los cambios que importan a la persona, con la voz del rol que corresponde (tema gremio)
+  const ev = transitionEvent(prev, snap.state)
+  if (!ev) return
+  const said = voice(th, ev === 'awaiting' ? (snap.agents.some(a => a.role === 'archimago') ? 'plan.archimago' : 'plan.maestro') : ev, `${snap.id}|${snap.progressMark}`)
+  const line = `${stateLine(snap, th)}${said ? `\n${said}` : ''}`
+  const important = ['DONE', 'LOGGED', 'BLOCKED', 'HALTED', 'PAUSED', 'AWAITING_APPROVAL'].includes(snap.state)
+  $.ui.toast(line, { timeoutMs: important ? 10_000 : 6_000 })
+  if (important) void $.ui.notify(stateLine(snap, th), { title: th === 'gremio' ? 'Gremio · GuildFlow' : 'GuildFlow' }).catch(() => undefined)
 }
 
 async function current($: $): Promise<Quest | null> {
@@ -291,16 +298,18 @@ async function askApproval($: $): Promise<string> {
     return o.ok ? `Plan APROBADO automáticamente (autoApprovePlan; sin rutas sensibles). Siguiente: ${M.nextStep(o.quest)}` : `No se pudo registrar la aprobación: ${o.error}`
   }
   if (OPTIONS.autoApprovePlan === true) await note($, 'approval.needs_human', { reasons: sensitive })
-  const question = approvalText(q.id, q.plan, q.limits)
+  const plain = approvalText(q.id, q.plan, q.limits)
+  const th = themeOf(OPTIONS)
+  const question = plain ? approvalDialog(th, q, plain) : null
   if (!question) return `El plan no cabe completo en el diálogo (${APPROVAL_MAX} caracteres): divídelo en misiones más pequeñas. No se aprueba un plan que la persona no puede leer entero.`
   let answer: string
   try {
-    answer = await $.ui.ask(question, { options: ['Aprobar', 'Rechazar'], header: 'GuildFlow' })
+    answer = await $.ui.ask(question, { options: [LABELS[th].approve, LABELS[th].reject], header: LABELS[th].header })
   } catch {
     await note($, 'approval.dismissed', {})
     return 'La persona cerró el diálogo sin decidir. El plan sigue en AWAITING_APPROVAL; /quest-resume vuelve a preguntar.'
   }
-  if (answer !== 'Aprobar') {
+  if (answer !== LABELS[th].approve) {
     const o = await mutate($, (x, t) => M.rejectPlan(x, answer.slice(0, 500), t))
     return o.ok ? `Plan RECHAZADO por la persona: "${answer.slice(0, 500)}". Corrige el plan y vuelve a enviarlo.` : `Error: ${o.error}`
   }
@@ -375,7 +384,7 @@ async function finalize($: $) {
     .filter(n => Number(n.split('-')[1]) >= q.createdAt)
     .sort()
     .slice(-50)
-  const md = summaryMarkdown(q, runs, t)
+  const md = summaryMarkdown(q, runs, t, themeOf(OPTIONS))
   await $.fs.write(`${q.project}/.guildflow/summary-${q.id}.md`, md)
   const o = await mutate($, (x, now) => M.markLogged(x, now))
   if (o.ok) await note($, 'quest.summary', { path: `.guildflow/summary-${q.id}.md` })
@@ -624,7 +633,8 @@ async function cmdQuest($: $, args: string): Promise<{ ok: boolean; text: string
   })
   if (!created.ok) return { ok: false, text: `No se pudo crear la misión: ${created.error}` }
   await $.ui.open({ id: PANE, title: 'Gremio · GuildFlow' }).catch(() => undefined)
-  return { ok: true, text: `Misión ${created.quest.id} creada. El Maestro empieza a planificar; ${OPTIONS.autoApprovePlan === true ? 'si el plan no toca nada sensible se aprobará solo, si no te llegará un diálogo' : 'la aprobación del plan te llegará en un diálogo'}.` }
+  const opening = themeOf(OPTIONS) === 'gremio' ? `📜 ${voice('gremio', 'quest.open', created.quest.id)} ` : ''
+  return { ok: true, text: `${opening}Misión ${created.quest.id} creada. El Maestro empieza a planificar; ${OPTIONS.autoApprovePlan === true ? 'si el plan no toca nada sensible se aprobará solo, si no te llegará un diálogo' : 'la aprobación del plan te llegará en un diálogo'}.` }
 }
 
 async function cmdHalt($: $): Promise<string> {
@@ -635,7 +645,7 @@ async function cmdHalt($: $): Promise<string> {
   if (!o.ok) return `No se pudo detener: ${o.error}`
   if (mainTurn) await $.turn.abort({ turnId: mainTurn }).catch(() => undefined)
   const running = o.quest.agents.filter(a => a.status === 'running')
-  return `Misión ${q.id} DETENIDA. No se lanzarán más agentes; ${running.length ? `los agentes en curso (${running.map(a => a.role).join(', ')}) verán rechazadas sus herramientas y terminarán` : 'no hay agentes en curso'}. El trabajo y el estado se conservan (.guildflow/). /quest-resume para reanudar o /quest para abrir otra.`
+  return `${themeOf(OPTIONS) === 'gremio' ? `⛔ El gremio se retira. ${voice('gremio', 'halted', q.id)}\n` : ''}Misión ${q.id} DETENIDA. No se lanzarán más agentes; ${running.length ? `los agentes en curso (${running.map(a => a.role).join(', ')}) verán rechazadas sus herramientas y terminarán` : 'no hay agentes en curso'}. El trabajo y el estado se conservan (.guildflow/). /quest-resume para reanudar o /quest para abrir otra.`
 }
 
 /**
@@ -663,13 +673,15 @@ async function cmdResume($: $): Promise<{ ok: boolean; text: string }> {
     `${lost.length ? `Agentes perdidos (NO se relanzan solos): ${lost.map(a => `${a.role} ${a.taskId ?? ''}`).join(', ')}. ` : ''}` +
     `${q.state === 'BLOCKED' && q.activeTask ? `Se concede 1 intento adicional a ${q.activeTask}. ` : ''}` +
     `Se aplicarán los límites vigentes. Lo que no cambia: el plan y los criterios aprobados; cambiarlos exige un plan nuevo y otra aprobación. ¿Reanudar?`
+  const th = themeOf(OPTIONS)
+  const head = th === 'gremio' ? `🏕️ Levantar el campamento · ${q.id}\n${voice(th, 'paused', q.id)}\n\n` : ''
   let answer: string
   try {
-    answer = await $.ui.ask(preview.slice(0, 1500), { options: ['Reanudar', 'Cancelar'], header: 'GuildFlow' })
+    answer = await $.ui.ask(`${head}${preview}`.slice(0, 1700), { options: [LABELS[th].resume, LABELS[th].cancel], header: LABELS[th].header })
   } catch {
     return no('Reanudación cancelada (diálogo cerrado).')
   }
-  if (answer !== 'Reanudar') return no('Reanudación cancelada.')
+  if (answer !== LABELS[th].resume) return no('Reanudación cancelada.')
   const o = await mutate($, (x, now) => M.resume({ ...x, limits: fresh }, { by: 'human', breach }, now))
   if (!o.ok) return no(`No se pudo reanudar: ${o.error}`)
   return { ok: true, text: `Misión ${q.id} reanudada en ${o.quest.state}. El Maestro continúa. Siguiente: ${M.nextStep(o.quest)}` }
@@ -771,7 +783,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'quest-status' }, async $ => {
     const q = await current($)
     await $.ui.open({ id: PANE, title: 'Gremio · GuildFlow' }).catch(() => undefined)
-    return { text: q ? statusText(q, await $.clock.now()) : 'Sin misión. /quest <petición> para abrir una.' }
+    return { text: q ? personStatus(themeOf(OPTIONS), q, await $.clock.now()) : 'Sin misión. /quest <petición> para abrir una.' }
   })
   on('command.run', { command: 'quest-halt' }, async $ => ({ text: await cmdHalt($) }))
   // /quest-resume, igual que /quest: skill del plugin con el mod delante (confirma y reanuda; solo entonces arranca el turno)
@@ -984,11 +996,11 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const q = await read($, viewA)
     if (!q) return next(e)
-    return band($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop')
+    return band($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', themeOf(OPTIONS))
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const q = await read($, viewA)
-    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop')
+    return pane($.ui.resolve(e) as never, q, await $.clock.now(), e.surface === 'desktop', themeOf(OPTIONS))
   })
 }

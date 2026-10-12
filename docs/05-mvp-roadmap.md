@@ -8,7 +8,7 @@
 |---|---|---|
 | 1. PoC | **Completada.** 7 PASS y 1 INCONCLUSIVE (P8, `permissionMode`, que se descarta como control) | `06`, `07` |
 | 2. Núcleo del gremio | **Completada.** 125 pruebas automáticas. En vivo: misión de 3 subtareas con dependencias → `LOGGED`, misión de fallo → `BLOCKED`, recuperación tras reinicio de la sesión → `PAUSED` sin relanzar nada. Opcional: reinicio con un agente en curso | `08`, `09`, `10` |
-| 3. Tablón pixel art | No iniciada | §1 |
+| 3. Tablón pixel art | **En curso.** 3.1 capa temática de rol hecha (textos de dos capas, voces, glosario, opción `theme`). Siguiente: tablón con sprites dibujados en Aseprite | §1, `11` §8 |
 | 4. Endurecimiento | No iniciada | §1 |
 
 **Cambios respecto a lo planeado:**

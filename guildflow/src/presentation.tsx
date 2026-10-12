@@ -2,6 +2,7 @@
 // Separada del dominio: el futuro tablón pixel art sustituye esta capa sin tocar machine.ts.
 import type { AgentRecord, Limits, Plan, Quest, Role } from '../types'
 import { agentBudget, elapsedMs, nextStep, progressSummary } from './machine'
+import { LABELS, stateTitle, voice, type Theme } from './theme'
 
 type Station = Role | 'maestro' | 'escriba'
 
@@ -56,10 +57,24 @@ export function headline(q: Quest, now: number): string {
   return `GuildFlow ${q.id} · ${q.state} · criterios ${p.criteriaPassed}/${p.criteriaTotal} · subtareas ${p.tasksDone}/${p.tasksTotal} · ${fmtTokens(u.mainTokens + u.agentTokens)}/${fmtTokens(q.limits.tokenBudgetPerQuest)} tok${cost} · ${fmtDur(elapsedMs(q, now))}`
 }
 
-/** Qué está pasando, en una frase para la persona (línea de estado, avisos y franja). */
-export function stateLine(q: Quest): string {
+/** Qué está pasando, en una frase para la persona (línea de estado, avisos y franja). Tema: cabecera + dato llano. */
+export function stateLine(q: Quest, theme: Theme = 'gremio'): string {
   const p = progressSummary(q)
   const crit = `criterios ${p.criteriaPassed}/${p.criteriaTotal}`
+  if (theme === 'gremio') {
+    const detail: Record<string, string> = {
+      AWAITING_APPROVAL: 'aprueba o rechaza el plan en el diálogo',
+      VERIFYING: `el mod ejecuta las comprobaciones de ${q.activeTask ?? ''}`.trim(),
+      REVIEWING: `${crit}`,
+      DONE: `${crit} superados`,
+      LOGGED: `${crit} superados · crónica en .guildflow/summary-${q.id}.md`,
+      PAUSED: 'en pausa · /quest-resume para seguir',
+      HALTED: `detenida · ${q.reason ?? ''}`,
+      BLOCKED: `necesita tu decisión · ${q.reason ?? ''}`,
+    }
+    const d = detail[q.state]
+    return `GuildFlow ${q.id} · ${stateTitle(theme, q)}${d ? ` — ${d}` : ''}`.replace(/ · $| — $/, '').slice(0, 300)
+  }
   const attempt = q.activeTask ? ` (intento ${q.progress[q.activeTask]?.attempts ?? 1})` : ''
   const phrase: Record<string, string> = {
     INTAKE: '⏳ trabajando · preparando la misión',
@@ -109,19 +124,21 @@ export function statusText(q: Quest, now: number): string {
 }
 
 /** Resumen mecánico final (Escriba sin modelo). */
-export function summaryMarkdown(q: Quest, runs: string[], now: number): string {
+export function summaryMarkdown(q: Quest, runs: string[], now: number, theme: Theme = 'gremio'): string {
   const p = progressSummary(q)
+  const g = theme === 'gremio'
   const out = [
-    `# Misión ${q.id}`,
+    g ? `# 📜 Crónica de la misión ${q.id}` : `# Misión ${q.id}`,
     '',
+    ...(g ? [`> ${voice(theme, 'done', q.id)}`, ''] : []),
     `- **Resultado:** ${q.state}${q.reason ? ` (${q.reason})` : ''}`,
     `- **Petición:** ${q.request}`,
     `- **Aprobada:** ${q.approval ? new Date(q.approval.at).toISOString() : 'no'} · plan ${q.planHash ?? '—'}`,
     `- **Criterios:** ${p.criteriaPassed}/${p.criteriaTotal} · **subtareas:** ${p.tasksDone}/${p.tasksTotal}`,
     `- **Duración activa:** ${fmtDur(elapsedMs(q, now))} · **iteraciones:** ${q.iterations} · **agentes:** ${q.agentsSpawned}`,
-    `- **Consumo:** ${fmtTokens(q.usage.mainTokens)} principal + ${fmtTokens(q.usage.agentTokens)} subagentes (+${fmtTokens(q.usage.cacheReadTokens)} lecturas de caché) · ${q.usage.costStartUsd !== null ? `≈$${q.usage.costUsd.toFixed(2)} equivalente a API` : 'coste no disponible'}`,
+    `- **${g ? 'Tesoro gastado (consumo)' : 'Consumo'}:** ${fmtTokens(q.usage.mainTokens)} principal + ${fmtTokens(q.usage.agentTokens)} subagentes (+${fmtTokens(q.usage.cacheReadTokens)} lecturas de caché) · ${q.usage.costStartUsd !== null ? `≈$${q.usage.costUsd.toFixed(2)} equivalente a API` : 'coste no disponible'}`,
     '',
-    '## Subtareas',
+    g ? '## ⚒️ Encargos (subtareas)' : '## Subtareas',
   ]
   for (const t of q.plan?.tasks ?? []) {
     const pr = q.progress[t.id]
@@ -133,16 +150,16 @@ export function summaryMarkdown(q: Quest, runs: string[], now: number): string {
     const failed = Object.entries(pr?.failures ?? {})
     if (failed.length) out.push(`- Fallos corregidos o repetidos: ${failed.map(([s, n]) => `${s}×${n}`).join(', ')}`)
   }
-  out.push('', '## Archivos modificados', ...(q.filesWritten.length ? q.filesWritten.map(f => `- ${f.slice(q.project.length + 1)}`) : ['- (ninguno registrado)']))
-  out.push('', '## Verificaciones', ...(runs.length ? runs.map(r => `- ${r}`) : ['- (ninguna)']))
-  out.push('', '## Pendiente y siguiente paso', `- ${q.state === 'DONE' || q.state === 'LOGGED' ? 'Nada pendiente: misión completada' : nextStep(q)}`)
+  out.push('', g ? '## 🧰 Archivos forjados (modificados)' : '## Archivos modificados', ...(q.filesWritten.length ? q.filesWritten.map(f => `- ${f.slice(q.project.length + 1)}`) : ['- (ninguno registrado)']))
+  out.push('', g ? '## 🔥 Pruebas de fuego (verificaciones)' : '## Verificaciones', ...(runs.length ? runs.map(r => `- ${r}`) : ['- (ninguna)']))
+  out.push('', g ? '## 🧭 Pendiente y siguiente paso' : '## Pendiente y siguiente paso', `- ${q.state === 'DONE' || q.state === 'LOGGED' ? 'Nada pendiente: misión completada' : nextStep(q)}`)
   return `${out.join('\n')}\n`
 }
 
 type El = Record<string, (props: Record<string, unknown>) => unknown>
 
 /** Banda sobre el prompt: estado, progreso y una fila por agente activo. */
-export function band(el: El, q: Quest, now: number, desktop: boolean) {
+export function band(el: El, q: Quest, now: number, desktop: boolean, theme: Theme = 'gremio') {
   const { Box, Text, Svg } = el as Record<string, any>
   const live = liveAgents(q)
   const finished = q.state === 'LOGGED' || q.state === 'DONE'
@@ -151,7 +168,7 @@ export function band(el: El, q: Quest, now: number, desktop: boolean) {
       <Box flexDirection="row" gap={1}>
         {desktop ? <Svg source={icon('maestro', 14)} alt="Mostrador del gremio" width={14} height={14} /> : <Text>{STATIONS.maestro.glyph}</Text>}
         <Text color={stateColor(q.state)} bold>
-          {stateLine(q).replace(`GuildFlow ${q.id} · `, '')}
+          {stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}
         </Text>
       </Box>
       <Text dimColor>{`  ${headline(q, now).replace(`GuildFlow ${q.id} · ${q.state} · `, `${q.id} · `)}`}</Text>
@@ -166,11 +183,11 @@ export function band(el: El, q: Quest, now: number, desktop: boolean) {
 }
 
 /** Panel lateral: las cinco estaciones del gremio y el tablón de criterios. */
-export function pane(el: El, q: Quest | null, now: number, desktop: boolean) {
+export function pane(el: El, q: Quest | null, now: number, desktop: boolean, theme: Theme = 'gremio') {
   const { Box, Text, Svg } = el as Record<string, any>
-  if (!q) return <Text dimColor>Sin misión. Escribe /quest &lt;petición&gt; para abrir una.</Text>
+  if (!q) return <Text dimColor>{theme === 'gremio' ? 'El tablón está vacío. Escribe /quest <petición> para abrir una misión.' : 'Sin misión. Escribe /quest <petición> para abrir una.'}</Text>
   const occupied = (s: Station) =>
-    s === 'maestro' ? q.state : s === 'escriba' ? `${q.progressMark} eventos` : (liveAgents(q).find(a => a.role === s) ? 'trabajando' : 'libre')
+    s === 'maestro' ? q.state : s === 'escriba' ? `${q.progressMark} eventos` : liveAgents(q).find(a => a.role === s) ? (theme === 'gremio' ? 'en faena' : 'trabajando') : theme === 'gremio' ? 'en reposo' : 'libre'
   const stations = (Object.keys(STATIONS) as Station[]).map(s => (
     <Box key={s} flexDirection="row" gap={1}>
       {desktop ? <Svg source={icon(s, 20)} alt={STATIONS[s].place} width={20} height={20} /> : <Text color={STATIONS[s].color}>{STATIONS[s].glyph}</Text>}
@@ -183,6 +200,7 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean) {
   return (
     <Box flexDirection="column" gap={1}>
       <Text bold color={stateColor(q.state)}>{`Tablón de misiones · ${q.id} · ${q.state}`}</Text>
+      {theme === 'gremio' ? <Text color={stateColor(q.state)}>{stateLine(q, theme).replace(`GuildFlow ${q.id} · `, '')}</Text> : null}
       <Box flexDirection="column">{stations}</Box>
       <Text>{statusText(q, now)}</Text>
     </Box>
@@ -216,4 +234,16 @@ export function approvalText(id: string, plan: Plan, limits: Limits): string | n
     `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs}${preview} — ` +
     `Límites: hasta ${agents} agentes, ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min. ¿Apruebas el plan?`
   return text.length > APPROVAL_MAX ? null : text
+}
+
+/** Diálogo de aprobación para la persona: cabecera y voz del tema + el plan completo (approvalText) sin tocar. */
+export function approvalDialog(theme: Theme, q: Quest, text: string): string {
+  if (theme === 'sobrio') return text
+  const planner = q.agents.some(a => a.role === 'archimago' && a.status === 'done') ? 'plan.archimago' : 'plan.maestro'
+  return `📜 Pergamino de misión · ${q.id}\n${voice(theme, planner, q.id)}\n\n${text.replace(/¿Apruebas el plan\?$/, `¿Sellas el pergamino? («${LABELS.gremio.approve}» = aprobar)`)}`
+}
+
+/** /quest-status para la persona: cabecera temática + el estado completo (el mismo texto llano que lee el Maestro). */
+export function personStatus(theme: Theme, q: Quest, now: number): string {
+  return theme === 'gremio' ? `${stateLine(q, theme)}\n\n${statusText(q, now)}` : statusText(q, now)
 }

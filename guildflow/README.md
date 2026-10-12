@@ -54,6 +54,7 @@ Las opciones van en `~/.claude/settings.json`, en `pluginConfigs.guildflow.optio
 | `tokenBudgetPerQuest` · `costBudgetUsd` · `rateLimitPercent` · `wallClockMinutes` | 2M · 25 · 90 · 60 | El USD es equivalente a precio de API, no lo facturado |
 | `maxFilesChanged` · `maxDiffLines` | 25 · 1500 | |
 | `maxTurnsArchimago` · `maxTurnsArtifice` · `maxTurnsPaladin` | 25 · 40 · 25 | |
+| `theme` | `gremio` | Textos con temática de rol: cabecera temática + dato llano y voces de los roles. `sobrio` deja solo el dato |
 | `maestroModel` | `claude-sonnet-5-5` | Modelo del Maestro mientras la misión trabaja. Todo plan de más de una subtarea lo traza el Archimago (Opus). `inherit` usa el modelo que tengas en la sesión |
 | `trustedTools` | Context7 + `WebSearch` | Herramientas de recursos que no impiden la aprobación automática |
 | `archimagoEffort` | `high` | `xhigh` para misiones arquitectónicas |
@@ -91,6 +92,31 @@ Los valores fuera de rango se acotan a los topes: un límite no se puede desacti
 - Las acciones sensibles del Maestro durante una misión: push, despliegue, instalación de dependencias, borrados, escrituras fuera del repo y MCP de sistemas externos.
 
 Lo demás que no encaja en el protocolo se rechaza con una explicación, sin interrumpirte. Con la misión detenida o terminada, GuildFlow no interviene.
+
+## Glosario del gremio (tema `gremio`)
+
+Cada mensaje temático lleva el dato exacto detrás, y la temática nunca lo sustituye. Las instrucciones a los agentes son neutras, así que el tema no gasta tokens.
+
+| Término | Significa |
+|---|---|
+| Pergamino de misión | Plan |
+| Sello · «Sellar el pergamino» | Aprobación · aprobar |
+| Encargo | Subtarea |
+| Forja | Implementación |
+| Prueba de fuego | Comprobación automática (tests) |
+| Juicio del Paladín | Revisión |
+| Encrucijada | Bloqueada: necesita tu decisión |
+| Campamento · «Levantar el campamento» | En pausa · reanudar |
+| El gremio se retira | Detenida |
+| Bitácora / Crónica | Registro / resumen final (`.guildflow/summary-*.md`) |
+| Tesoro gastado | Coste |
+
+Voces de los roles:
+- **Maestro:** sobrio y organizador.
+- **Archimago:** sabio y solemne.
+- **Artífice:** práctico.
+- **Paladín:** estricto y honorable.
+- **Escriba:** cronista.
 
 ## Desarrollo
 

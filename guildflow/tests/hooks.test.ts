@@ -6,6 +6,7 @@ import { agentSpawned, startTask } from '../src/machine'
 import { files } from '../src/persistence'
 import { agent, approved, ok, planned, RAW_PLAN, ROOT } from './fixtures'
 import { limitsFrom } from '../src/validation'
+import { LABELS } from '../src/theme'
 import { world } from './world'
 
 type R = { deny?: string; result?: unknown; text?: string }
@@ -181,7 +182,7 @@ describe('herramienta quest y aprobación humana', () => {
 
   test('aprobación solo por el diálogo de la persona: "Aprobar" → DISPATCH', async ($, on) => {
     const q = planned()
-    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: ['Aprobar'] })
+    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: [LABELS.gremio.approve] })
     const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
     expect(String(r.result)).toContain('APROBADO')
     expect(w.asked.length).toBe(1)
@@ -207,7 +208,7 @@ describe('herramienta quest y aprobación humana', () => {
 
   test('autoApprovePlan desactivado (por defecto): sigue preguntando a la persona', async ($, on) => {
     const q = planned()
-    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: ['Aprobar'] })
+    const w = world(on, { quest: { ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 }, answers: [LABELS.gremio.approve] })
     await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
     expect(w.asked.length).toBe(1)
     expect(saved(w).approval?.by).toBe('human')
@@ -307,7 +308,7 @@ describe('Maestro en Sonnet y planificación del Archimago', () => {
   const planning = (q: Quest): Quest => ({ ...q, state: 'PLANNING', plan: null, planHash: null, rev: 1 })
 
   test('un plan de más de una subtarea sin Archimago terminado se rechaza; con él, pasa', async ($, on) => {
-    const w = world(on, { quest: planning(planned()), answers: ['Aprobar'] })
+    const w = world(on, { quest: planning(planned()), answers: [LABELS.gremio.approve] })
     const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: twoTasks() })
     expect(String(r.result)).toContain('lo traza el Archimago')
     expect(w.asked.length).toBe(0)
@@ -316,7 +317,7 @@ describe('Maestro en Sonnet y planificación del Archimago', () => {
   test('con un Archimago terminado en la misión, el plan de varias subtareas se acepta', async ($, on) => {
     const q = planning(planned())
     q.agents.push({ ...agent('mago', 'archimago', null), status: 'done' })
-    const w = world(on, { quest: q, answers: ['Aprobar'] })
+    const w = world(on, { quest: q, answers: [LABELS.gremio.approve] })
     const r = await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: twoTasks() })
     expect(String(r.result)).toContain('APROBADO')
     expect(w.asked.length).toBe(1)
@@ -343,7 +344,7 @@ describe('Maestro en Sonnet y planificación del Archimago', () => {
 describe('/quest-resume como skill (arranca el turno del Maestro)', () => {
   const blocked = () => ({ ...implementing(), state: 'BLOCKED' as const, pausedFrom: 'FIXING' as const, reason: 'mismo fallo', agents: [] })
   test('confirmado en el diálogo: reanuda y deja pasar al prompt de la skill', async ($, on) => {
-    const w = world(on, { quest: blocked(), answers: ['Reanudar'] })
+    const w = world(on, { quest: blocked(), answers: [LABELS.gremio.resume] })
     const passed: string[] = []
     on('command.run', ($, e) => {
       passed.push(e.command)
@@ -354,7 +355,7 @@ describe('/quest-resume como skill (arranca el turno del Maestro)', () => {
     expect(saved(w).state).toBe('FIXING')
   })
   test('cancelado o sin misión: responde el mod y no abre turno', async ($, on) => {
-    world(on, { quest: blocked(), answers: ['Cancelar'] })
+    world(on, { quest: blocked(), answers: [LABELS.gremio.cancel] })
     const passed: string[] = []
     on('command.run', ($, e) => {
       passed.push(e.command)
@@ -363,5 +364,24 @@ describe('/quest-resume como skill (arranca el turno del Maestro)', () => {
     const r = (await $.command.run({ command: 'guildflow:quest-resume', args: '' } as never)) as { text?: string }
     expect(r.text).toContain('cancelada')
     expect(passed).toEqual([])
+  })
+})
+
+describe('capa temática en los diálogos', () => {
+  const planning = () => ({ ...planned(), state: 'PLANNING' as const, plan: null, planHash: null, rev: 1 })
+  test('gremio (por defecto): pergamino con voz y el plan completo; se aprueba con «Sellar el pergamino»', async ($, on) => {
+    const w = world(on, { quest: planning(), answers: [LABELS.gremio.approve] })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
+    expect(w.asked[0]).toContain('📜 Pergamino de misión')
+    expect(w.asked[0]).toContain('— el Maestro')
+    expect(w.asked[0]).toContain('src/math.js') // el dato llano sigue completo
+    expect(saved(w).state).toBe('DISPATCH')
+  })
+  test('sobrio: el texto llano de siempre y «Aprobar»', { options: { theme: 'sobrio' } }, async ($, on) => {
+    const w = world(on, { quest: planning(), answers: ['Aprobar'] })
+    await call($, { tool: 'mcp__guildflow__quest', action: 'submit_plan', plan: RAW_PLAN })
+    expect(w.asked[0]).not.toContain('Pergamino')
+    expect(w.asked[0]).toContain('¿Apruebas el plan?')
+    expect(saved(w).state).toBe('DISPATCH')
   })
 })

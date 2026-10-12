@@ -196,6 +196,10 @@ Lo resume `skills/guildflow/SKILL.md`. Lo que impone el mod:
 - **Aviso y notificación** al pasar a `DONE`, `BLOCKED`, `HALTED`, `PAUSED` o `AWAITING_APPROVAL`.
 - **Franja `AbovePrompt`:** estado, agentes en curso y siguiente paso. Se mantiene tras terminar.
 - **Panel lateral:** las cinco estaciones con iconos SVG estáticos y el estado completo. **Solo datos reales**, sin estimaciones.
+- **Capa temática** (`src/theme.ts`, opción `theme`: `gremio` por defecto o `sobrio`; Fase 3.1).
+  - Cabecera de rol + dato llano en la línea de estado, la franja, el panel, los diálogos ("Sellar el pergamino", "Levantar el campamento"), los avisos con la voz de cada rol, la salida de `/quest`, `/quest-status` y `/quest-halt`, y la crónica final.
+  - Lo que leen los modelos (briefs y respuestas de herramientas) sigue neutro.
+  - Las voces salen de repertorios por evento, elegidas de forma estable por misión, sin azar.
 
 ## 11. Fuera de alcance en esta fase
 
