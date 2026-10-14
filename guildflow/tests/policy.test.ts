@@ -64,11 +64,11 @@ describe('subagentes', () => {
     const q = ok(halt(implementing(), 'user', 'alto', 4))
     expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [`${ROOT}/src/math.js`] })).kind).toBe('deny')
   })
-  test('límite de archivos modificados', () => {
+  test('sin tope de archivos: la referencia de la barra no rechaza escrituras dentro de las rutas', () => {
     const q = implementing()
     q.limits.maxFilesChanged = 1
     q.filesWritten = [`${ROOT}/src/x.js`]
-    expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [`${ROOT}/src/math.js`] })).kind).toBe('deny')
+    expect(decide(facts(q, { tool: 'Write', caller: asArt, writes: [`${ROOT}/src/math.js`] })).kind).toBe('allow')
   })
   test('herramientas propias: run_check del Artífice pasa al manejador; submit_verdict no', () => {
     expect(decide(facts(implementing(), { tool: TOOL.runCheck, caller: asArt })).kind).toBe('own')

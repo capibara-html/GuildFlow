@@ -1,9 +1,9 @@
 // Presentación: texto y árboles de UI derivados SOLO de la misión persistida (sin datos inventados).
 // Separada del dominio: la oficina pixel art (src/sprites.ts) se dibuja aquí sin tocar machine.ts.
 import type { AgentRecord, Limits, Plan, Quest, TaskStatus } from '../types'
-import { agentBudget, elapsedMs, isActive, isStopped, isWorking, nextStep, progressSummary } from './machine'
+import { agentBudget, elapsedMs, isActive, isStopped, isWorking, liveRate, nextStep, planRounds, progressSummary } from './machine'
 import { TOOL } from './policy'
-import { animates, scene, type NoteState, type Plaque, type Pose, type SceneView, type Station } from './sprites'
+import { animates, scene, SCENE_H, SCENE_W, type NoteState, type Plaque, type Pose, type SceneView, type Station } from './sprites'
 import { taskEffort } from './validation'
 import { LABELS, stateTitle, voice, type Theme } from './theme'
 
@@ -125,7 +125,7 @@ export function headline(q: Quest, now: number): string {
   const p = progressSummary(q)
   const u = q.usage
   const cost = u.costStartUsd !== null ? ` · ≈$${u.costUsd.toFixed(2)}` : ''
-  return `GuildFlow ${q.id} · ${q.state} · criterios ${p.criteriaPassed}/${p.criteriaTotal} · subtareas ${p.tasksDone}/${p.tasksTotal} · ${fmtTokens(u.mainTokens + u.agentTokens)}/${fmtTokens(q.limits.tokenBudgetPerQuest)} tok${cost} · ${fmtDur(elapsedMs(q, now))}`
+  return `GuildFlow ${q.id} · ${q.state} · criterios ${p.criteriaPassed}/${p.criteriaTotal} · subtareas ${p.tasksDone}/${p.tasksTotal} · ${fmtTokens(u.mainTokens + u.agentTokens)} tok${cost} · ${fmtDur(elapsedMs(q, now))}`
 }
 
 /** Qué está pasando, en una frase para la persona (línea de estado, avisos y franja). Tema: cabecera + dato llano. */
@@ -189,7 +189,7 @@ export function statusText(q: Quest, now: number): string {
       `${u.costStartUsd !== null ? `≈$${u.costUsd.toFixed(2)} equivalentes (precio API, no lo facturado)` : 'coste no disponible'}${u.ratePercent !== null ? ` · suscripción ${u.ratePercent}%` : ''}` +
       `${u.unavailable.length ? ` · sin datos: ${u.unavailable.join(', ')}` : ''}`,
   )
-  lines.push(`Iteraciones ${q.iterations}/${q.limits.maxQuestIterations} · agentes ${q.agentsSpawned}/${agentBudget(q)} · archivos ${q.filesWritten.length}/${q.limits.maxFilesChanged}`)
+  lines.push(`Iteraciones ${q.iterations}/${planRounds(q)} del plan · agentes ${q.agentsSpawned}/${agentBudget(q)} previstos · archivos ${q.filesWritten.length} (informativo: solo detienen la misión la suscripción y los bucles)`)
   lines.push(`Siguiente: ${nextStep(q)}`)
   return lines.join('\n')
 }
@@ -328,6 +328,8 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean, the
       source={scene(view, board.anim)}
       alt={`Oficina del gremio: ${stations.map(s => `${STATIONS[s].name} ${doing(s, view.poses[s])}`).join(', ')}`}
       isInteractive={board.anim && animates(view) ? true : undefined}
+      width={SCENE_W * 2}
+      height={SCENE_H * 2}
     />
   ) : null
   if (!q)
@@ -354,6 +356,8 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean, the
   const ratio = (a: number, b: number) => (b > 0 ? a / b : 0)
   const pct = (r: number) => `${Math.round(r * 100)} %`
   const limit = (label: string, a: number, b: number, value: string) => meter(label, ratio(a, b), `${value} · ${pct(ratio(a, b))}${limitLabel(ratio(a, b))}`, limitColor(ratio(a, b)))
+  // Consumo solo informativo: la barra usa la referencia configurada como escala, sin color de alarma
+  const info = (label: string, a: number, b: number, value: string) => meter(label, ratio(a, b), value, limitColor(0))
   const p = progressSummary(q)
   const tasks = q.plan?.tasks ?? []
   let failed = 0
@@ -431,14 +435,14 @@ export function pane(el: El, q: Quest | null, now: number, desktop: boolean, the
       </Box>
       <Box flexDirection="column">
         <Text bold>{sec.treasure}</Text>
-        {limit('Tokens', spent, L.tokenBudgetPerQuest, `${fmtTokens(spent)} / ${fmtTokens(L.tokenBudgetPerQuest)}`)}
-        {u.costStartUsd !== null ? limit('Coste', u.costUsd, L.costBudgetUsd, `≈$${u.costUsd.toFixed(2)} / $${L.costBudgetUsd} equivalente API, no facturado`) : <Text dimColor>{'Coste        no disponible'}</Text>}
-        {u.ratePercent !== null ? limit('Suscripción', u.ratePercent, L.rateLimitPercent, `${u.ratePercent}% usado / umbral ${L.rateLimitPercent}%`) : null}
-        {limit('Tiempo', elapsedMs(q, now), L.wallClockMinutes * 60_000, `${fmtDur(elapsedMs(q, now))} / ${L.wallClockMinutes} min`)}
-        {limit('Agentes', q.agentsSpawned, agentBudget(q), `${q.agentsSpawned} / ${agentBudget(q)} lanzados`)}
-        {limit('Iteraciones', q.iterations, L.maxQuestIterations, `${q.iterations} / ${L.maxQuestIterations}`)}
-        {limit('Archivos', q.filesWritten.length, L.maxFilesChanged, `${q.filesWritten.length} / ${L.maxFilesChanged}`)}
-        {q.diffLines !== null ? limit('Líneas diff', q.diffLines, L.maxDiffLines, `${q.diffLines} / ${L.maxDiffLines}`) : null}
+        {info('Tokens', spent, L.tokenBudgetPerQuest, `${fmtTokens(spent)} · ref. ${fmtTokens(L.tokenBudgetPerQuest)}`)}
+        {u.costStartUsd !== null ? info('Coste', u.costUsd, L.costBudgetUsd, `≈$${u.costUsd.toFixed(2)} equivalente API, no facturado · ref. $${L.costBudgetUsd}`) : <Text dimColor>{'Coste        no disponible'}</Text>}
+        {liveRate(u, now) !== null ? limit('Suscripción', u.ratePercent!, L.rateLimitPercent, `${u.ratePercent}% usado / umbral ${L.rateLimitPercent}%`) : u.ratePercent !== null ? <Text dimColor>{'Suscripción  ventana reiniciada (sin lectura nueva)'}</Text> : null}
+        {info('Tiempo', elapsedMs(q, now), L.wallClockMinutes * 60_000, `${fmtDur(elapsedMs(q, now))} · ref. ${L.wallClockMinutes} min`)}
+        {info('Agentes', q.agentsSpawned, agentBudget(q), `${q.agentsSpawned} lanzados · ${agentBudget(q)} previstos`)}
+        {info('Iteraciones', q.iterations, planRounds(q), `${q.iterations} · ${planRounds(q)} del plan`)}
+        {info('Archivos', q.filesWritten.length, L.maxFilesChanged, `${q.filesWritten.length} · ref. ${L.maxFilesChanged}`)}
+        {q.diffLines !== null ? info('Líneas diff', q.diffLines, L.maxDiffLines, `${q.diffLines} · ref. ${L.maxDiffLines}`) : null}
       </Box>
       <Box flexDirection="column">
         <Text bold>{sec.log}</Text>
@@ -495,10 +499,9 @@ export function approvalText(id: string, plan: Plan, limits: Limits): string | n
   const preview = plan.preview
     ? ` — Vista previa: ${JSON.stringify(plan.preview.argv)} en el puerto ${plan.preview.port} (el navegador ejecuta el código del proyecto, que puede usar la red)`
     : ''
-  const agents = Math.min(limits.maxAgentsPerQuest, plan.tasks.reduce((n, t) => n + Math.min(t.maxAttempts, limits.maxAttemptsPerTask) * 2, 0))
   const text =
     `GuildFlow ${id}: ${plan.objective} — ${plan.tasks.length} subtareas: ${tasks} — ${plan.checks.length} comprobaciones: ${checks}${installs}${preview} — ` +
-    `Límites: hasta ${agents} agentes, ${limits.maxAttemptsPerTask} intentos/subtarea, ${limits.maxQuestIterations} iteraciones, ${fmtTokens(limits.tokenBudgetPerQuest)} tokens, $${limits.costBudgetUsd} equiv., ${limits.wallClockMinutes} min.${limits.sandbox ? ' Comprobaciones aisladas en Docker (sin red, proyecto de solo lectura).' : ''} ¿Apruebas el plan?`
+    `Sin topes de consumo. Se detiene si: ${limits.maxAttemptsPerTask} intentos fallidos en una subtarea, el mismo fallo ${limits.maxSameFailure} veces, ${limits.maxNoProgressRounds} rondas sin progreso, un agente en bucle o la suscripción ≥ ${limits.rateLimitPercent}%.${limits.sandbox ? ' Comprobaciones aisladas en Docker (sin red, proyecto de solo lectura).' : ''} ¿Apruebas el plan?`
   return text.length > APPROVAL_MAX ? null : text
 }
 

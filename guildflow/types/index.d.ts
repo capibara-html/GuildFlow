@@ -135,15 +135,15 @@ export type Usage = {
   costStartUsd: number | null
   costUsd: number
   ratePercent: number | null
+  /** Cuándo se reinicia la última ventana que superaba el umbral (ms); pasada esa hora la lectura está caducada. */
+  rateResetsAt?: number | null
   unavailable: string[]
 }
 
 export type Limits = {
   maxAttemptsPerTask: number
-  maxQuestIterations: number
   maxSameFailure: number
   maxNoProgressRounds: number
-  maxAgentsPerQuest: number
   maxConcurrentAgents: number
   /** Artífices a la vez contando el del carril principal (1 = en serie). Ausente en misiones antiguas. */
   maxParallelArtifices?: number
@@ -153,7 +153,6 @@ export type Limits = {
   wallClockMinutes: number
   maxFilesChanged: number
   maxDiffLines: number
-  maxTurns: Record<Role, number>
   archimagoEffort: Effort
   allowedExecutables: string[]
   /** Comprobaciones en Docker: imagen por ejecutable; null = en la máquina de la persona. Ausente en misiones antiguas. */

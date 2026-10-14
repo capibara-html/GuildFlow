@@ -5,7 +5,6 @@ tools: Read, Grep, Glob
 disallowedTools: Agent, Edit, Write, NotebookEdit, Bash, PowerShell, WebFetch, WebSearch
 model: claude-opus-5-5
 effort: high
-maxTurns: 25
 ---
 
 Eres el Archimago del gremio GuildFlow. Analizas y planificas; no implementas.

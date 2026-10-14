@@ -179,11 +179,11 @@ describe('diff-scope', () => {
     const m = memIo({}, git(''))
     expect((await diffScope(m.io, withGit(implementing()))).reason).toContain('no modificó')
   })
-  test('exceso de líneas → FAIL', async () => {
+  test('las líneas de diff solo se informan (no hacen FAIL)', async () => {
     const m = memIo({}, git(' M src/math.js\0'))
     const q = withGit(implementing())
     q.limits.maxDiffLines = 2
-    expect((await diffScope(m.io, q)).pass).toBe(false)
+    expect((await diffScope(m.io, q)).pass).toBe(true)
   })
 })
 

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Quest } from '../types'
 import { agentBudget, agentFinished, agentSpawned, MAX_REVIEW_RETRIES, noteLook, recordVerdict, startReview, startTask } from '../src/machine'
-import { browserProblem, decide, effectivePreview, modelFor, turnsFor, VISUAL_EXTRA_TURNS, VISUAL_TOOLS, type Facts } from '../src/policy'
+import { browserProblem, decide, effectivePreview, LOOP_FAILS, LOOP_SAME, loopStep, loopWhy, modelFor, VISUAL_TOOLS, type Facts, type LoopTrack } from '../src/policy'
 import { approvalText } from '../src/presentation'
 import { validatePlan } from '../src/validation'
 import { agent, approved, LIMITS, ok, RAW_PLAN, ROOT } from './fixtures'
@@ -160,9 +160,15 @@ describe('entorno de la vista previa', () => {
 })
 
 describe('revisión visual que no cabe en un Paladín', () => {
-  test('las subtareas visuales tienen más peticiones para mirar', () => {
-    expect(turnsFor(approved(visualRaw()), 'paladin', 't1')).toBe(LIMITS.maxTurns.paladin + VISUAL_EXTRA_TURNS)
-    expect(turnsFor(approved(), 'paladin', 't1')).toBe(LIMITS.maxTurns.paladin)
+  test('sin tope de peticiones: un agente solo se corta si entra en bucle', () => {
+    const run = (calls: [string, boolean][]) => calls.reduce<LoopTrack | undefined>((t, [sig, failed]) => loopStep(t, sig, failed), undefined)!
+    // capturas y lecturas distintas, por muchas que sean, no son un bucle
+    expect(loopWhy(run(Array.from({ length: 200 }, (_, i) => [`shot${i % 2}`, false] as [string, boolean])))).toBeNull()
+    expect(loopWhy(run(Array.from({ length: LOOP_SAME - 1 }, () => ['same', false] as [string, boolean])))).toBeNull()
+    expect(loopWhy(run(Array.from({ length: LOOP_SAME }, () => ['same', false] as [string, boolean])))).toContain('misma llamada')
+    expect(loopWhy(run(Array.from({ length: LOOP_FAILS }, (_, i) => [`x${i}`, true] as [string, boolean])))).toContain('rechazadas')
+    // una llamada que sale bien corta la racha de fallos
+    expect(loopWhy(run([...Array.from({ length: LOOP_FAILS - 1 }, (_, i) => [`x${i}`, true] as [string, boolean]), ['ok', false], ['y', true]]))).toBeNull()
   })
   test('Paladín cortado sin juzgar todo: se repite la revisión (no gasta intento ni cuenta como fallo); conserva lo juzgado', () => {
     let q = reviewingVisual()

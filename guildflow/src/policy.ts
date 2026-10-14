@@ -91,12 +91,20 @@ function previewProblem(name: string, input: unknown): string | null {
   return cfg === PREVIEW_NAME ? null : `${name} solo puede usar la configuración "${PREVIEW_NAME}" (la del plan aprobado)`
 }
 
-/** Peticiones de un agente en una subtarea: las visuales suman margen para mirar (las capturas cuestan peticiones). */
-export const VISUAL_EXTRA_TURNS = 25
-export function turnsFor(q: Quest, role: Role, taskId: string | null): number {
-  const visual = q.plan?.tasks.find(t => t.id === taskId)?.visual === true
-  return q.limits.maxTurns[role] + (visual && role !== 'archimago' ? VISUAL_EXTRA_TURNS : 0)
-}
+/**
+ * Bucle dentro de un agente (sustituye al tope de peticiones): la misma llamada idéntica una y otra vez, o una racha
+ * de llamadas rechazadas o fallidas. Cualquier llamada distinta reinicia la primera cuenta; una que sale bien, la segunda.
+ */
+export const LOOP_SAME = 6
+export const LOOP_FAILS = 8
+export type LoopTrack = { sig: string; same: number; fails: number }
+export const loopStep = (t: LoopTrack | undefined, sig: string, failed: boolean): LoopTrack => ({
+  sig,
+  same: t?.sig === sig ? t.same + 1 : 1,
+  fails: failed ? (t?.fails ?? 0) + 1 : 0,
+})
+export const loopWhy = (t: LoopTrack): string | null =>
+  t.same >= LOOP_SAME ? `repitió ${t.same} veces seguidas la misma llamada` : t.fails >= LOOP_FAILS ? `${t.fails} llamadas seguidas rechazadas o con error` : null
 
 /**
  * Vista previa efectiva de la misión: el mismo argv aprobado, pero en un puerto propio (8100–8999, derivado del id
@@ -302,7 +310,6 @@ export function decide(f: Facts): Decision {
       const task = q.plan?.tasks.find(t => t.id === q.activeTask)
       if (!task) return deny('4-write', 'no hay subtarea activa')
       const prot = protectedEntries(q)
-      let fresh = 0
       for (const w of f.writes) {
         if (w === null) return deny('4-write', 'ruta de escritura no resoluble con seguridad')
         if (!inside(w, f.root)) return deny('4-write', 'escritura fuera del proyecto')
@@ -312,9 +319,7 @@ export function decide(f: Facts): Decision {
         if (!entries.some(e => matchesEntry(w, f.root, e))) return deny('4-write', `${task.id} solo puede escribir en ${task.paths.join(', ')}; rechazado: ${w.slice(f.root.length + 1)}`)
         const why = q.approval?.by === 'auto' ? autoUnwritable(w.slice(f.root.length + 1), q.limits.autoApproveExtensions ?? AUTO_EXTS) : null
         if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(f.root.length + 1)} no se puede escribir (${why}); necesita un plan aprobado por la persona`)
-        if (!q.filesWritten.includes(w)) fresh += 1
       }
-      if (q.filesWritten.length + fresh > q.limits.maxFilesChanged) return deny('4-limit', `límite de ${q.limits.maxFilesChanged} archivos modificados por misión`)
     }
     return { kind: 'allow', step: '4-allow' }
   }
@@ -359,7 +364,6 @@ function decideBench(f: Facts, q: Quest, bench: { taskId: string; dir: string })
   const home = `${f.root}/${bench.dir.toLowerCase()}`
   const prot = protectedEntries(v)
   const entries = task.paths.map(p => parseEntry(p) as PathEntry)
-  let fresh = 0
   for (const w of f.writes) {
     if (w === null) return deny('4-write', 'ruta de escritura no resoluble con seguridad')
     if (!inside(w, home)) return deny('4-write', `en paralelo escribes solo en tu taller: ${bench.dir}/<ruta> (${task.paths.join(', ')}); rechazado: ${w.slice(f.root.length + 1)}`)
@@ -368,9 +372,7 @@ function decideBench(f: Facts, q: Quest, bench: { taskId: string; dir: string })
     if (!entries.some(e => matchesEntry(w, home, e))) return deny('4-write', `${task.id} solo puede escribir en ${task.paths.join(', ')} (dentro de su taller ${bench.dir}); rechazado: ${w.slice(home.length + 1)}`)
     const why = q.approval?.by === 'auto' ? autoUnwritable(w.slice(home.length + 1), q.limits.autoApproveExtensions ?? AUTO_EXTS) : null
     if (why) return deny('4-write', `plan aprobado automáticamente: ${w.slice(home.length + 1)} no se puede escribir (${why}); necesita un plan aprobado por la persona`)
-    if (!q.filesWritten.includes(`${f.root}${w.slice(home.length)}`)) fresh += 1
   }
-  if (q.filesWritten.length + fresh > q.limits.maxFilesChanged) return deny('4-limit', `límite de ${q.limits.maxFilesChanged} archivos modificados por misión`)
   return { kind: 'allow', step: '4-bench' }
 }
 

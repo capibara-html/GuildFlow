@@ -214,10 +214,8 @@ export const exeName = (argv0: string) =>
 
 const HARD: Record<string, [number, number]> = {
   maxAttemptsPerTask: [1, 10],
-  maxQuestIterations: [1, 30],
   maxSameFailure: [1, 5],
   maxNoProgressRounds: [1, 5],
-  maxAgentsPerQuest: [1, 60],
   maxConcurrentAgents: [1, 3],
   maxParallelArtifices: [1, 3],
   tokenBudgetPerQuest: [10_000, 20_000_000],
@@ -226,16 +224,11 @@ const HARD: Record<string, [number, number]> = {
   wallClockMinutes: [1, 480],
   maxFilesChanged: [1, 200],
   maxDiffLines: [1, 20_000],
-  maxTurnsArchimago: [1, 60],
-  maxTurnsArtifice: [1, 80],
-  maxTurnsPaladin: [1, 60],
 }
 const DEFAULTS: Record<string, number> = {
   maxAttemptsPerTask: 3,
-  maxQuestIterations: 8,
   maxSameFailure: 2,
   maxNoProgressRounds: 2,
-  maxAgentsPerQuest: 40,
   maxConcurrentAgents: 3,
   maxParallelArtifices: 1,
   tokenBudgetPerQuest: 2_000_000,
@@ -244,9 +237,6 @@ const DEFAULTS: Record<string, number> = {
   wallClockMinutes: 60,
   maxFilesChanged: 25,
   maxDiffLines: 1500,
-  maxTurnsArchimago: 25,
-  maxTurnsArtifice: 40,
-  maxTurnsPaladin: 25,
 }
 const DEFAULT_EXES = 'node,git,tsc,python,py,pytest,cargo,go,dotnet,deno,bun'
 /** Imágenes del sandbox Docker por ejecutable; un ejecutable sin imagen no puede ser una comprobación con sandbox. */
@@ -285,10 +275,8 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     .filter(x => /^[a-z0-9._-]{1,32}$/.test(x) && !/\.(cmd|bat|ps1|sh)$/.test(x))
   return {
     maxAttemptsPerTask: n('maxAttemptsPerTask'),
-    maxQuestIterations: n('maxQuestIterations'),
     maxSameFailure: n('maxSameFailure'),
     maxNoProgressRounds: n('maxNoProgressRounds'),
-    maxAgentsPerQuest: n('maxAgentsPerQuest'),
     maxConcurrentAgents: n('maxConcurrentAgents'),
     maxParallelArtifices: n('maxParallelArtifices'),
     tokenBudgetPerQuest: n('tokenBudgetPerQuest'),
@@ -297,7 +285,6 @@ export function limitsFrom(options: Readonly<Record<string, unknown>>): Limits {
     wallClockMinutes: n('wallClockMinutes'),
     maxFilesChanged: n('maxFilesChanged'),
     maxDiffLines: n('maxDiffLines'),
-    maxTurns: { archimago: n('maxTurnsArchimago'), artifice: n('maxTurnsArtifice'), paladin: n('maxTurnsPaladin') },
     archimagoEffort: effort,
     allowedExecutables: exes,
     sandbox: options.sandbox === 'docker' ? imagesFrom(String(options.sandboxImages ?? DEFAULT_IMAGES)) : null,

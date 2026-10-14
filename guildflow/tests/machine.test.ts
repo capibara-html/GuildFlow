@@ -163,25 +163,29 @@ describe('límites del ciclo', () => {
     expect(q.reason).toContain('sin progreso')
   })
 
-  test('el límite de iteraciones por misión detiene aunque queden intentos', () => {
-    let q = approved()
-    q = { ...q, limits: { ...q.limits, maxQuestIterations: 1 } }
-    q = round(q, 1, { unit: false, scope: true, review: null })
-    q = ok(startTask(q, 't1', 30))
-    expect(q.state).toBe('HALTED')
-    expect(q.reason).toContain('iteraciones')
+  test('sin tope de iteraciones: mientras queden intentos, la subtarea sigue', () => {
+    const q = ok(startTask({ ...approved(), iterations: 999 }, 't1', 30))
+    expect(q.state).toBe('IMPLEMENTING')
   })
 
-  test('presupuesto de tokens, USD, suscripción y tiempo', () => {
+  test('cortada por la suscripción, el intento en curso no cuenta', () => {
+    const q = ok(halt(ok(startTask(approved(), 't1', 30)), 'limit', 'uso de la suscripción 95% ≥ 90%', 31))
+    expect(q.state).toBe('HALTED')
+    expect(q.progress.t1!.attempts).toBe(0)
+  })
+
+  test('solo la suscripción detiene: tokens, USD y tiempo son informativos', () => {
     let q = approved()
-    q = ok(account(q, { agentId: null, tokens: 2_500_000, cacheRead: 9, costUsd: null, ratePercent: null, unavailable: ['cost'] }, 3))
-    expect(limitBreach(q, 3)).toContain('tokens')
+    q = ok(account(q, { agentId: null, tokens: 2_500_000, cacheRead: 9, costUsd: 400, ratePercent: 10, unavailable: [] }, 3))
+    expect(limitBreach(q, 3)).toBeNull()
+    expect(limitBreach(approved(), 24 * 60 * 60_000)).toBeNull()
     q = approved()
     q = ok(account(q, { agentId: null, tokens: 1, cacheRead: 0, costUsd: 10, ratePercent: 95, unavailable: [] }, 3))
     expect(limitBreach(q, 3)).toContain('suscripción')
-    q = ok(account(q, { agentId: null, tokens: 1, cacheRead: 0, costUsd: 40, ratePercent: 10, unavailable: [] }, 4))
-    expect(limitBreach(q, 4)).toContain('USD')
-    expect(limitBreach(approved(), 61 * 60_000)).toContain('tiempo')
+    // la ventana de 5 h se reinicia: la lectura guardada caduca sin esperar otra respuesta
+    q = ok(account(q, { agentId: null, tokens: 1, cacheRead: 0, costUsd: 10, ratePercent: 95, rateResetsAt: 100, unavailable: [] }, 3))
+    expect(limitBreach(q, 99)).toContain('suscripción')
+    expect(limitBreach(q, 100)).toBeNull()
   })
 
   test('sin cost.usd disponible el presupuesto USD no se aplica (y queda registrado)', () => {

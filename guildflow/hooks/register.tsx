@@ -7,7 +7,7 @@ import type { EngineInterface, Register, ToolCallResult } from 'claude-code'
 import type { Baseline, CheckRun, Io, Quest, Role } from '../types'
 import * as M from '../src/machine'
 import { appendLog, archiveQuest, Conflict, files, loadQuest, quarantine, saveQuest, tampered, writeRun } from '../src/persistence'
-import { ARTIFICE_SYSTEM, decide, effortFor, effectivePreview, installCommand, modelFor, turnsFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller } from '../src/policy'
+import { ARTIFICE_SYSTEM, decide, effortFor, effectivePreview, installCommand, loopStep, loopWhy, modelFor, OWN_TOOLS, PALADIN_SYSTEM, pathArgs, PLUGIN, PREVIEW_NAME, protectedEntries, ROLES, roleOfType, roleVariant, TOOL, toolsFor, type Caller, type LoopTrack } from '../src/policy'
 import { APPROVAL_MAX, approvalDialog, approvalText, band, chronicle, ESCRIBA_SYSTEM, withEscriba, pane, personStatus, stateLine, statusText, summaryMarkdown, type Entry } from '../src/presentation'
 import { LABELS, themeOf, transitionEvent, voice } from '../src/theme'
 import { checkOverlaps, exactArgs, hash, isCheckId, isTaskId, limitsFrom, normalizeAbs, pathsOverlap, sensitivePlan, validatePlan } from '../src/validation'
@@ -38,6 +38,8 @@ let mainTurn: string | null = null
 let mainTurnSeq = 0
 /** Variantes registradas: turno del registro y huella de la definición (misión, plan, herramientas, skills, modelo). */
 const variantReady = new Map<string, { seq: number; sig: string }>()
+/** Racha de llamadas de cada agente en curso; `why` fija el corte por bucle hasta que el agente termina. */
+const loops = new Map<string, LoopTrack & { why: string | null }>()
 
 const PREFIX = 'GuildFlow'
 const VERDICTS = ['PASS', 'FAIL', 'INCONCLUSIVE', 'NOT_RUN'] as const
@@ -476,12 +478,12 @@ function kick($: $, why: string, input: { text: string }) {
     .catch(err => note($, 'prompt.kick', { why, error: String(err).slice(0, 300) }))
 }
 
-/** Continuación acotada: solo en una misión aprobada, solo si hubo progreso desde la última y nunca más que las iteraciones permitidas. */
+/** Continuación acotada: solo en una misión aprobada y solo si hubo progreso desde la última (sin progreso, el Maestro se detiene). */
 async function maybeContinue($: $) {
   const q = QUEST
   if (!q || !M.isApproved(q)) return
   if (!['DISPATCH', 'IMPLEMENTING', 'VERIFYING', 'REVIEWING', 'FIXING'].includes(q.state)) return
-  if (q.progressMark === q.continueMark || q.continuations >= q.limits.maxQuestIterations * 2) return
+  if (q.progressMark === q.continueMark) return
   const o = await mutate($, (x, t) => {
     const c = JSON.parse(JSON.stringify(x)) as Quest
     c.continueMark = c.progressMark
@@ -637,7 +639,6 @@ async function roleTypeFor($: $, q: Quest, role: 'artifice' | 'paladin'): Promis
     skills: role === 'artifice' ? task.resources.skills : [],
     model: modelFor(q, role, task.id),
     effort: effortFor(q, role, task.id),
-    maxTurns: turnsFor(q, role, task.id),
   }
   // La huella liga la variante a ESTA misión y ESTE plan aprobado: otra misión u otro plan con el mismo id de
   // subtarea re-registra y no se usa hasta el turno siguiente (nunca una definición de antes)
@@ -762,7 +763,7 @@ async function cmdResume($: $): Promise<{ ok: boolean; text: string }> {
   const fresh = limitsFrom(OPTIONS)
   const t = await $.clock.now()
   const breach = M.limitBreach({ ...q, limits: fresh }, t, fresh)
-  if (q.state === 'HALTED' && q.haltKind === 'limit' && breach) return no(`El límite sigue superado con la configuración actual: ${breach}. Ajusta el límite en la configuración del plugin y vuelve a intentarlo.`)
+  if (q.state === 'HALTED' && q.haltKind === 'limit' && breach) return no(`El límite sigue superado: ${breach}. La misión se podrá reanudar cuando se reinicie la ventana de uso${q.usage.rateResetsAt ? ` (${new Date(q.usage.rateResetsAt).toLocaleString()})` : ''}, o subiendo el umbral en la configuración del plugin.`)
   const lost = q.agents.filter(a => a.status === 'lost')
   const target = q.pausedFrom ?? 'PLANNING'
   const preview =
@@ -939,9 +940,7 @@ export const register: Register = (on, options) => {
           ? `la misión está ${q.state}`
           : rec && rec.status !== 'running'
             ? 'el agente ya no figura en curso'
-            : (rec?.steps ?? 0) >= turnsFor(q, role, rec?.taskId ?? null)
-              ? `límite de ${turnsFor(q, role, rec?.taskId ?? null)} peticiones del ${role}`
-              : null
+            : (loops.get(e.agentId)?.why ?? null)
         if (stopWhy) {
           const text = `${PREFIX}: este agente se detiene (${stopWhy}). Entrega ya tu informe con lo hecho y lo pendiente.`
           if (rec && rec.status === 'running') await mutate($, (x, t) => {
@@ -982,6 +981,9 @@ export const register: Register = (on, options) => {
       if (su?.cost?.usd === undefined) unavailable.push('cost.usd')
       if (!su?.rateLimits?.length) unavailable.push('rateLimits')
       const rate = su?.rateLimits?.length ? Math.max(...su.rateLimits.map(x => x.percentUsed)) : null
+      // La parada por suscripción caduca cuando se reinician TODAS las ventanas que superan el umbral; sin hora, no caduca
+      const over = (su?.rateLimits ?? []).filter(x => x.percentUsed >= q.limits.rateLimitPercent).map(x => Date.parse(x.resetsAt ?? ''))
+      const rateResetsAt = over.length && over.every(Number.isFinite) ? Math.max(...over) : null
       await mutate($, (x, t) =>
         M.account(x, {
           agentId: role ? (e.agentId ?? null) : null,
@@ -990,6 +992,7 @@ export const register: Register = (on, options) => {
           cacheRead: u?.cache_read_input_tokens ?? 0,
           costUsd: su?.cost?.usd ?? null,
           ratePercent: rate,
+          rateResetsAt,
           unavailable,
           model: u?.model ?? sent.model,
           effort: (sent.effort as never) ?? null,
@@ -1021,7 +1024,8 @@ export const register: Register = (on, options) => {
     if (e.agentId) {
       const rec = q.agents.find(a => a.id === e.agentId)
       if (!rec) return r
-      const partial = rec.partial || rec.steps >= turnsFor(q, rec.role, rec.taskId)
+      const partial = rec.partial
+      loops.delete(rec.id)
       const task = rec.taskId
       const wasDone = task ? q.progress[task]?.status === 'done' : true
       await mutate($, (x, t) => M.agentFinished(x, rec.id, { reason: e.reason, partial }, t))
@@ -1058,10 +1062,20 @@ export const register: Register = (on, options) => {
       return n.toLowerCase().startsWith(`${root}/`) ? n.slice(root.length + 1) : p
     })
     const d = decide({ tool, caller, quest: q, root, reads, writes, patterns, command: typeof raw.command === 'string' ? raw.command : undefined, skill: typeof raw.skill === 'string' ? raw.skill : undefined, input: raw })
+    // Bucle dentro del agente: se anota cada llamada; el corte llega en su siguiente petición (entrega informe)
+    const sig = caller.kind === 'agent' ? hash(`${tool}|${JSON.stringify(raw)}`) : ''
+    const seen = async <T,>(r: T, failed: boolean): Promise<T> => {
+      if (caller.kind !== 'agent') return r
+      const t = loopStep(loops.get(caller.agentId), sig, failed)
+      const why = loopWhy(t)
+      if (why && !loops.get(caller.agentId)?.why) await note($, 'agent.loop', { agentId: caller.agentId, role: caller.role, tool, why })
+      loops.set(caller.agentId, { ...t, why: why ?? loops.get(caller.agentId)?.why ?? null })
+      return r
+    }
     if (caller.kind === 'agent' || d.kind !== 'allow') await note($, 'tool.call', { tool, caller: caller.kind === 'agent' ? `${caller.role ?? '?'}:${caller.agentId}` : 'maestro', decision: d.kind, step: d.step, reason: 'reason' in d ? d.reason : null, writes })
     if (d.kind === 'deny') {
       $.ui.toast(`${PREFIX}: rechazado ${tool} — ${d.reason.slice(0, 160)}`)
-      return { deny: `${PREFIX}: ${d.reason}` }
+      return seen({ deny: `${PREFIX}: ${d.reason}` }, true)
     }
     if (d.kind === 'ask') {
       let answer = ''
@@ -1071,12 +1085,13 @@ export const register: Register = (on, options) => {
         answer = ''
       }
       await note($, 'tool.call.human', { tool, answer })
-      if (answer !== 'Permitir una vez') return { deny: `${PREFIX}: la persona no autorizó ${tool} durante la misión` }
-      return next(e)
+      if (answer !== 'Permitir una vez') return seen({ deny: `${PREFIX}: la persona no autorizó ${tool} durante la misión` }, true)
+      const asked = await next(e)
+      return seen(asked, !!asked.deny || !!asked.isError)
     }
     if (d.kind === 'own') {
       if (tool === TOOL.quest) return serveQuest($, raw, caller)
-      if (tool === TOOL.runCheck) return serveRunCheck($, raw, caller)
+      if (tool === TOOL.runCheck) return seen(await serveRunCheck($, raw, caller), false)
       return serveVerdict($, raw, caller)
     }
     if (caller.kind === 'agent' && QUEST) {
@@ -1086,7 +1101,7 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     if (caller.kind === 'agent' && writes.length && !ran.deny && !ran.isError && !(QUEST && M.benchOf(QUEST, caller.agentId))) await mutate($, (x, t) => M.noteWrites(x, writes as string[], t))
     if (caller.kind === 'agent' && !ran.deny && !ran.isError && looked(tool, raw)) await mutate($, (x, t) => M.noteLook(x, caller.agentId, t))
-    return ran
+    return seen(ran, !!ran.deny || !!ran.isError)
   }).catch(($, e, next) => {
     if (next.error?.kind === 're-entry') return e.tool === 'AskUserQuestion' && !e.agentId ? next(e) : { deny: `${PREFIX}: llamada anidada no permitida` }
     if (next.called) return next(e)

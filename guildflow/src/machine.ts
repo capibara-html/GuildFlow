@@ -201,11 +201,6 @@ export function startTask(q: Quest, taskId: string, now: number): Outcome {
       const clash = benchClash(c, task.paths)
       if (clash) throw new Error(`las rutas de ${taskId} pisan el taller en marcha de ${clash}; espera a que se integre`)
     }
-    if (c.iterations >= c.limits.maxQuestIterations) {
-      stop(c, 'HALTED', `límite de iteraciones por misión (${c.limits.maxQuestIterations})`, now, log)
-      c.haltKind = 'limit'
-      return 'límite de iteraciones alcanzado'
-    }
     if (p.attempts >= maxAttempts(c, taskId)) {
       p.status = 'blocked'
       stop(c, 'BLOCKED', `subtarea ${taskId}: ${p.attempts} intentos usados (máximo ${maxAttempts(c, taskId)})`, now, log)
@@ -271,7 +266,6 @@ export function startParallel(q: Quest, taskId: string, bench: { dir: string; se
     if (!parallelCandidates(c).includes(taskId))
       throw new Error(`${taskId} no puede ir en paralelo ahora (pendiente, dependencias terminadas, sin trabajo visual, rutas disjuntas y como mucho ${(c.limits.maxParallelArtifices ?? 1) - 1} talleres)`)
     const p = progressOf(c, taskId)
-    if (c.iterations >= c.limits.maxQuestIterations) throw new Error(`límite de iteraciones por misión (${c.limits.maxQuestIterations})`)
     if (p.attempts >= maxAttempts(c, taskId)) throw new Error(`subtarea ${taskId}: sin intentos (${p.attempts}/${maxAttempts(c, taskId)}); en serie se bloqueará`)
     p.attempts += 1
     p.round += 1
@@ -322,24 +316,20 @@ export function benchConflict(q: Quest, taskId: string, reason: string, now: num
 }
 
 /** Por qué no puede lanzarse un agente de este rol ahora (null si puede). */
+/** Rondas que el plan permite: la suma de intentos de cada subtarea, incluidos los extra concedidos al reanudar. */
+export const planRounds = (q: Quest): number => (q.plan?.tasks ?? []).reduce((n, t) => n + maxAttempts(q, t.id), 0)
+
 /**
- * Agentes que la misión puede lanzar: los Archimagos ya lanzados + 2 por cada intento permitido de cada
- * subtarea (Artífice + Paladín), incluidos los intentos extra concedidos al reanudar. Sin plan: el techo de
- * userConfig. Nunca supera ese techo. Así el límite escala con el plan aprobado y no corta una misión que
- * cumple su plan, pero sigue acotando los bucles.
+ * Agentes que el plan prevé (solo informativo): los Archimagos ya lanzados + 2 por cada intento permitido de cada
+ * subtarea (Artífice + Paladín) + las revisiones repetidas. No detiene nada: los bucles los cortan los intentos.
  */
 export function agentBudget(q: Quest): number {
-  const ceiling = q.limits.maxAgentsPerQuest
-  if (!q.plan) return ceiling
   const planners = q.agents.filter(a => a.role === 'archimago').length
-  const perTasks = q.plan.tasks.reduce((n, t) => n + maxAttempts(q, t.id) * 2 + (q.progress[t.id]?.reviewRetries ?? 0), 0)
-  return Math.min(ceiling, planners + perTasks)
+  return planners + (q.plan?.tasks ?? []).reduce((n, t) => n + maxAttempts(q, t.id) * 2 + (q.progress[t.id]?.reviewRetries ?? 0), 0)
 }
 
 export function spawnBlocker(q: Quest, role: Role): string | null {
   if (isStopped(q)) return `la misión está ${q.state}`
-  const budget = agentBudget(q)
-  if (q.agentsSpawned >= budget) return `límite de ${budget} agentes para este plan (techo ${q.limits.maxAgentsPerQuest})`
   const running = q.agents.filter(a => a.status === 'running').length
   if (running >= q.limits.maxConcurrentAgents) return `límite de ${q.limits.maxConcurrentAgents} agentes concurrentes`
   if (role === 'archimago') return q.state === 'PLANNING' ? null : `el Archimago solo planifica (estado ${q.state})`
@@ -407,7 +397,7 @@ export function pause(q: Quest, reason: string, now: number): Outcome {
 export function halt(q: Quest, kind: 'user' | 'limit' | 'safety', reason: string, now: number): Outcome {
   return op(q, now, (c, log) => {
     if (c.state === 'HALTED' && c.haltKind === 'safety') return // la causa de seguridad no se rebaja
-    stop(c, 'HALTED', reason, now, log)
+    stop(c, 'HALTED', reason, now, log, kind === 'limit') // cortada por la suscripción: el intento en curso no cuenta
     c.haltKind = kind
   })
 }
@@ -652,15 +642,16 @@ export function markLogged(q: Quest, now: number): Outcome {
 }
 
 /** Límites globales con la configuración dada; null si ninguno está superado. */
+/** El uso de la suscripción leído en la última respuesta, o null si su ventana ya se reinició (sin misión en marcha no llega otra lectura). */
+export const liveRate = (u: Quest['usage'], now: number): number | null => (u.rateResetsAt && now >= u.rateResetsAt ? null : u.ratePercent)
+
+/**
+ * Único límite de consumo que detiene la misión: el uso de la suscripción (ventanas de 5 h y semanal). Tokens, coste,
+ * tiempo, iteraciones, agentes y archivos solo se informan; los bucles los cortan los fallos repetidos y las rondas sin progreso.
+ */
 export function limitBreach(q: Quest, now: number, limits: Limits = q.limits): string | null {
-  const u = q.usage
-  if (u.mainTokens + u.agentTokens > limits.tokenBudgetPerQuest) return `presupuesto de tokens (${u.mainTokens + u.agentTokens} > ${limits.tokenBudgetPerQuest})`
-  if (u.costStartUsd !== null && u.costUsd > limits.costBudgetUsd) return `presupuesto USD equivalente (${u.costUsd.toFixed(2)} > ${limits.costBudgetUsd})`
-  if (u.ratePercent !== null && u.ratePercent >= limits.rateLimitPercent) return `uso de la suscripción ${u.ratePercent}% ≥ ${limits.rateLimitPercent}%`
-  if (elapsedMs(q, now) > limits.wallClockMinutes * 60_000) return `tiempo máximo de misión (${limits.wallClockMinutes} min)`
-  if (q.filesWritten.length > limits.maxFilesChanged) return `archivos modificados (${q.filesWritten.length} > ${limits.maxFilesChanged})`
-  if (q.diffLines !== null && q.diffLines > limits.maxDiffLines) return `líneas de diff (${q.diffLines} > ${limits.maxDiffLines})`
-  return null
+  const rate = liveRate(q.usage, now)
+  return rate !== null && rate >= limits.rateLimitPercent ? `uso de la suscripción ${rate}% ≥ ${limits.rateLimitPercent}%` : null
 }
 
 /** Suma el uso de una petición al agente o a la sesión principal (nunca a ambos). */
@@ -672,6 +663,7 @@ export function account(
     cacheRead: number
     costUsd: number | null
     ratePercent: number | null
+    rateResetsAt?: number | null
     unavailable: string[]
     model?: string
     effort?: Effort | null
@@ -701,6 +693,7 @@ export function account(
       u.costUsd = total
     }
     u.ratePercent = a.ratePercent
+    u.rateResetsAt = a.rateResetsAt ?? null
     for (const m of a.unavailable) if (!u.unavailable.includes(m)) u.unavailable.push(m)
     log.push({
       ev: 'usage.request',

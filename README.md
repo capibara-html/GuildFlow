@@ -137,14 +137,14 @@ Si la petición no trae tests que la verifiquen, la primera subtarea del plan lo
 Las opciones se ajustan al instalar, con `/plugin configure guildflow@guildflow`, o en `~/.claude/settings.json`:
 
 ```json
-{ "pluginConfigs": { "guildflow": { "options": { "autoApprovePlan": true, "tokenBudgetPerQuest": 1000000, "theme": "gremio" } } } }
+{ "pluginConfigs": { "guildflow": { "options": { "autoApprovePlan": true, "rateLimitPercent": 95, "theme": "gremio" } } } }
 ```
 
 | Opción | Por defecto | Para qué |
 |---|---|---|
 | `autoApprovePlan` | `false` | Aprueba sin diálogo los planes no sensibles: nada de dependencias, CI, secretos, configuración ni instrucciones de agentes |
-| `tokenBudgetPerQuest` · `costBudgetUsd` · `wallClockMinutes` | 2M · 25 · 60 | Presupuesto de cada misión. El USD es el equivalente a precio de API |
-| `maxAttemptsPerTask` · `maxQuestIterations` | 3 · 8 | Intentos y vueltas antes de bloquear |
+| `rateLimitPercent` | 90 | Único límite de consumo: la misión se para cuando la ventana de 5 h o la semanal pasa de este porcentaje, y se reanuda cuando se reinicia. Tokens, coste y tiempo solo se muestran |
+| `maxAttemptsPerTask` · `maxSameFailure` · `maxNoProgressRounds` | 3 · 2 · 2 | Protección contra bucles: intentos por subtarea, mismo fallo repetido y rondas sin progreso |
 | `maxParallelArtifices` | 1 | Hasta 3 Artífices a la vez en talleres separados |
 | `sandbox` | `none` | `docker`: cada comprobación corre en un contenedor sin red y con el proyecto de solo lectura |
 | `theme` | `gremio` | `sobrio` quita la ambientación y deja solo el dato |

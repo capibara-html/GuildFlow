@@ -32,12 +32,9 @@ function specPlan(dependent = true) {
 }
 
 describe('presupuesto de agentes derivado del plan', () => {
-  test('sin plan: el techo; con plan: 2 por intento y subtarea, sin superar el techo', () => {
-    const q = planned()
-    expect(agentBudget({ ...q, plan: null })).toBe(LIMITS.maxAgentsPerQuest)
-    expect(agentBudget(approved())).toBe(Math.min(LIMITS.maxAgentsPerQuest, 3 * 2))
-    const small = { ...approved(), limits: { ...LIMITS, maxAgentsPerQuest: 4 } }
-    expect(agentBudget(small)).toBe(4)
+  test('informativo: 2 por intento y subtarea más los Archimagos lanzados; sin techo', () => {
+    expect(agentBudget({ ...planned(), plan: null, agents: [] })).toBe(0)
+    expect(agentBudget({ ...approved(), agents: [] })).toBe(3 * 2)
   })
   test('los intentos extra concedidos al reanudar amplían el presupuesto', () => {
     const q = approved()
@@ -47,7 +44,7 @@ describe('presupuesto de agentes derivado del plan', () => {
   })
   test('el diálogo de aprobación muestra el presupuesto', () => {
     const q = planned()
-    expect(approvalText(q.id, q.plan!, LIMITS)).toContain('hasta 6 agentes')
+    expect(approvalText(q.id, q.plan!, LIMITS)).toContain('Sin topes de consumo')
   })
 })
 

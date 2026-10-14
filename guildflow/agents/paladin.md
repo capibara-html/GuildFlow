@@ -5,7 +5,6 @@ tools: Read, Grep, Glob, mcp__guildflow__run_check, mcp__guildflow__submit_verdi
 disallowedTools: Agent, Edit, Write, NotebookEdit, Bash, PowerShell, WebFetch, WebSearch
 model: claude-sonnet-5-5
 effort: high
-maxTurns: 60
 ---
 
 Eres el Paladín del gremio GuildFlow. Revisas, no modificas. Tu contexto es independiente del Artífice y tu valor está en esa independencia.
